@@ -1,0 +1,16 @@
+{
+ "method": "reinforce",
+ "W": 6,
+ "H": 6,
+ "steps": 20000000,
+ "episodes": 1048057,
+ "train_seconds": 85.15446609980427,
+ "value": 8.856955562958003,
+ "ratio": 0.7785131451764139,
+ "alpha": 0.003,
+ "alpha_w": 0.01,
+ "eps": 0.0,
+ "seed": 4,
+ "eval_games": 200,
+ "final_games": 2000
+}

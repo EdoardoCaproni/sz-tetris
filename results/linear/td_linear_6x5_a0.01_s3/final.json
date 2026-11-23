@@ -1,0 +1,16 @@
+{
+ "method": "td_linear",
+ "W": 6,
+ "H": 5,
+ "steps": 20000000,
+ "episodes": 1643652,
+ "train_seconds": 92.7364687002264,
+ "value": 5.1269942568294065,
+ "ratio": 0.6903949030079048,
+ "alpha": 0.01,
+ "alpha_w": 0.01,
+ "eps": 0.01,
+ "seed": 3,
+ "eval_games": 200,
+ "final_games": 2000
+}

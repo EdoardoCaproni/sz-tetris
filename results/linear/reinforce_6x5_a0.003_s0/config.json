@@ -1,0 +1,16 @@
+{
+ "method": "reinforce",
+ "W": 6,
+ "H": 5,
+ "alpha": 0.003,
+ "alpha_w": 0.01,
+ "eps": 0.0,
+ "steps": 20000000,
+ "seed": 0,
+ "eval_games": 200,
+ "final_games": 2000,
+ "save": [
+  "linear",
+  "reinforce_6x5_a0.003_s0"
+ ]
+}

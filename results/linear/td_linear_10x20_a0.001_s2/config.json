@@ -1,0 +1,16 @@
+{
+ "method": "td_linear",
+ "W": 10,
+ "H": 20,
+ "alpha": 0.001,
+ "alpha_w": 0.01,
+ "eps": 0.01,
+ "steps": 50000000,
+ "seed": 2,
+ "eval_games": 200,
+ "final_games": 2000,
+ "save": [
+  "linear",
+  "td_linear_10x20_a0.001_s2"
+ ]
+}
