@@ -163,6 +163,31 @@ def features(rows, W, H, out):
     out[2 * W + 1] = 1.0
 
 
+def heuristic_weights(W, H):
+    """A hand-made cost-to-go on the same features, fixed in advance (not tuned):
+
+      J~(b) = C - ( holes + 0.5 * sum_c |h_c - h_c+1| + 0.1 * sum_c h_c )   (in cells)
+
+      holes      a hole cannot be filled until every row above it is cleared
+      steps      S and Z land without a hole only on a step of the right
+                 shape; big steps leave no such place
+      heights    the distance to game over (a cleared row lowers the sum by W)
+      C = 2WH    larger than any penalty, so every board is worth more than
+                 game over (worth 0, as W(game over) = 0); the same for every
+                 placement, so it changes no other choice
+
+    Played as the one-step look-ahead max_u [ r + J~(b') ] (Bertsekas,
+    approximation in value space), the same rule as linear TD with learned
+    weights. The features are divided by H, so the weights are multiplied by H.
+    """
+    w = np.zeros(n_features(W))
+    w[:W] = -0.1 * H                # column heights
+    w[W:2 * W - 1] = -0.5 * H       # |height differences|
+    w[2 * W] = -1.0 * H             # holes
+    w[2 * W + 1] = 2.0 * W * H      # constant C
+    return w
+
+
 def board_to_text(rows, W):
     """Board as text, top row first (for debugging and tests)."""
     lines = []
