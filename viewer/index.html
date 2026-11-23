@@ -123,6 +123,7 @@ aside.panel { display: grid; gap: 12px; min-width: 0; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button { font: inherit; font-size: 0.9rem; padding: 6px 12px; min-height: 36px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font-family: var(--font-data); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.pnote { margin: -2px 0 6px; font-size: 0.78rem; line-height: 1.35; color: var(--muted); }
 .pgroup { margin: 8px 0 2px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .pol { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; cursor: pointer; font-size: 0.92rem; }
 .pol:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
@@ -230,6 +231,7 @@ footer { color: var(--muted); font-size: 0.86rem; padding-block: 20px 40px; bord
       </div>
       <div class="block">
         <h3>Policy</h3>
+        <p class="pnote" id="pnote"></p>
         <div id="policies" role="radiogroup" aria-label="Policy"></div>
       </div>
       <div class="block details" id="details"></div>
@@ -671,9 +673,12 @@ function renderPolicies() {
     const h = ok ? headline(m, S.board) : null;
     const sw = TAB.includes(m) || LIN.includes(m) ? `<span class="swatch" style="background:var(--m-${m})"></span>` : '';
     html += `<label class="pol${ok ? '' : ' off'}"><input type="radio" name="pol" value="${m}" ${m === S.policy ? 'checked' : ''} ${ok ? '' : 'disabled'}>` +
-      `<span>${sw}${M[m].label}</span><span class="hv">${ok ? fmt(h, S.board === '10x20' ? 1 : 2) : (M[m].boards.includes(S.board) ? 'no data' : 'not on this board')}</span></label>`;
+      `<span>${sw}${M[m].label}</span><span class="hv">${ok ? fmt(h, S.board === '10x20' && h >= 1 ? 1 : 2) : (M[m].boards.includes(S.board) ? 'no data' : 'not on this board')}</span></label>`;
   }
   $('policies').innerHTML = html;
+  $('pnote').textContent = SMALL.includes(S.board)
+    ? 'Expected rows from the empty board, computed exactly. Learned policies: mean of 5 training seeds.'
+    : 'Expected rows from the empty board, estimated by Monte Carlo. Learned policies: mean of 5 training seeds, 2,000 games each; greedy and random: 100,000 games.';
 }
 function renderDetails() {
   const m = S.policy, b = S.board, small = SMALL.includes(b);
