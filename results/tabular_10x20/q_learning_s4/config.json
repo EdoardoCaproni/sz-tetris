@@ -1,0 +1,13 @@
+{
+ "method": "q_learning",
+ "alpha": 0.3,
+ "eps": 0.2,
+ "q0": 0.0,
+ "steps": 10000000,
+ "seed": 4,
+ "final_games": 2000,
+ "save": [
+  "tabular_10x20",
+  "q_learning_s4"
+ ]
+}

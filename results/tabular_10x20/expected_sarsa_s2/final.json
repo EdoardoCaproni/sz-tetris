@@ -1,0 +1,18 @@
+{
+ "method": "expected_sarsa",
+ "W": 10,
+ "H": 20,
+ "steps": 10000000,
+ "episodes": 427078,
+ "boards": 6454631,
+ "train_seconds": 60.791923800483346,
+ "value": 2.7165,
+ "ci95": 0.06435557631084621,
+ "pieces": 27.083,
+ "coverage": 0.4898693159562725,
+ "alpha": 0.3,
+ "eps": 0.1,
+ "q0": 0.0,
+ "seed": 2,
+ "final_games": 2000
+}

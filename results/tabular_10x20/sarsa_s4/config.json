@@ -1,0 +1,13 @@
+{
+ "method": "sarsa",
+ "alpha": 0.1,
+ "eps": 0.1,
+ "q0": 0.0,
+ "steps": 10000000,
+ "seed": 4,
+ "final_games": 2000,
+ "save": [
+  "tabular_10x20",
+  "sarsa_s4"
+ ]
+}

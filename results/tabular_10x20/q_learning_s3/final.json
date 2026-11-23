@@ -1,0 +1,18 @@
+{
+ "method": "q_learning",
+ "W": 10,
+ "H": 20,
+ "steps": 10000000,
+ "episodes": 447235,
+ "boards": 6806299,
+ "train_seconds": 329.7723827997688,
+ "value": 2.206,
+ "ci95": 0.03377407401006901,
+ "pieces": 25.571,
+ "coverage": 0.4880508825411163,
+ "alpha": 0.3,
+ "eps": 0.2,
+ "q0": 0.0,
+ "seed": 3,
+ "final_games": 2000
+}

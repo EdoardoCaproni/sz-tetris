@@ -1,0 +1,18 @@
+{
+ "method": "td_afterstate",
+ "W": 10,
+ "H": 20,
+ "steps": 10000000,
+ "episodes": 413829,
+ "boards": 6378321,
+ "train_seconds": 595.08356119995,
+ "value": 5.906,
+ "ci95": 0.1220014474823717,
+ "pieces": 40.6155,
+ "coverage": 0.521716668068388,
+ "alpha": 0.1,
+ "eps": 0.2,
+ "q0": 0.0,
+ "seed": 4,
+ "final_games": 2000
+}
