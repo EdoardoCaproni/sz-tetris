@@ -418,6 +418,11 @@ function headline(m, b) {
   } else if (m === 'greedy' || m === 'random') {
     return R.baselines_10x20 && R.baselines_10x20[m].mean;
   }
+  // mean over seeds, as in the summary table and the README (the run that
+  // is played is one of the seeds: its own value is in the details)
+  const f = TAB.includes(m) ? R.tabular_final && R.tabular_final[+b.split('x')[1]] && R.tabular_final[+b.split('x')[1]][m]
+                            : R.linear && R.linear[b] && R.linear[b][m];
+  if (f) return f.value;
   const s = R.shown && R.shown[b] && R.shown[b][m];
   return s ? s.value : null;
 }
