@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SZ-Tetris</title>
+<meta name="description" content="SZ-Tetris (Tetris with only S and Z pieces) solved exactly by dynamic programming on small boards, and learned by tabular and linear reinforcement learning.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Same family as the 2048 viewer: the board on the left, the decision in
+   the middle, the controls on the right; results below, then the method.
+   Regions that change during a game have fixed sizes, so nothing moves.
+   Chart colours: one fixed slot per method (validated for colour vision
+   deficiency on both surfaces); text is always in ink, never in a series
+   colour. */
+:root {
+  --bg: #edf0ec; --panel: #f8f9f6; --ink: #17201c; --muted: #59665f; --faint: #8a958f;
+  --line: #d2d9d4; --grid: #e3e7e3; --well: #c9d3cc; --cell: #e6ebe7;
+  --accent: #b45309; --accent-ink: #ffffff; --bad: #b42318; --focus: #1d4ed8;
+  --piece-s: #0f766e; --piece-z: #9a3412; --flash: #fde68a;
+  --m-mc: #2a78d6; --m-sarsa: #eb6834; --m-q_learning: #1baf7a; --m-expected_sarsa: #eda100;
+  --m-td_afterstate: #e87ba4; --m-td_linear: #008300; --m-reinforce: #6250d6;
+  --seq-1: #86b6ef; --seq-2: #3987e5; --seq-3: #1c5cab; --seq-4: #0d366b;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111614; --panel: #18201c; --ink: #e5ebe7; --muted: #95a39b; --faint: #6b7872;
+    --line: #2b3530; --grid: #232c28; --well: #0c110f; --cell: #253029;
+    --accent: #f59e0b; --accent-ink: #1b1305; --bad: #f87171; --focus: #93b4ff;
+    --piece-s: #2dd4bf; --piece-z: #fb923c; --flash: #713f12;
+    --m-mc: #3987e5; --m-sarsa: #d95926; --m-q_learning: #199e70; --m-expected_sarsa: #c98500;
+    --m-td_afterstate: #d55181; --m-td_linear: #0ca30c; --m-reinforce: #9085e9;
+    --seq-1: #184f95; --seq-2: #2a78d6; --seq-3: #5598e7; --seq-4: #9ec5f4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111614; --panel: #18201c; --ink: #e5ebe7; --muted: #95a39b; --faint: #6b7872;
+  --line: #2b3530; --grid: #232c28; --well: #0c110f; --cell: #253029;
+  --accent: #f59e0b; --accent-ink: #1b1305; --bad: #f87171; --focus: #93b4ff;
+  --piece-s: #2dd4bf; --piece-z: #fb923c; --flash: #713f12;
+  --m-mc: #3987e5; --m-sarsa: #d95926; --m-q_learning: #199e70; --m-expected_sarsa: #c98500;
+  --m-td_afterstate: #d55181; --m-td_linear: #0ca30c; --m-reinforce: #9085e9;
+  --seq-1: #184f95; --seq-2: #2a78d6; --seq-3: #5598e7; --seq-4: #9ec5f4;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); margin: 0; }
+body { font-family: var(--font-ui); font-size: 16px; line-height: 1.5; overflow-anchor: none; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+header.top { padding-block: 22px 0; display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--font-head); font-weight: 700; font-size: 2.2rem; letter-spacing: -0.01em; margin: 0; line-height: 1.1; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
+nav.jump { display: flex; gap: 6px; flex-wrap: wrap; }
+nav.jump a, .theme { font-size: 0.9rem; text-decoration: none; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; font-family: inherit; }
+nav.jump a:hover, .theme:hover { border-color: var(--muted); }
+h2 { font-family: var(--font-head); font-weight: 700; font-size: 1.7rem; margin: 0 0 4px; }
+h3 { font-family: var(--font-head); font-weight: 600; font-size: 1.15rem; margin: 0 0 6px; }
+.sub { color: var(--muted); margin: 0 0 14px; max-width: 80ch; }
+.num, .mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------- play */
+.play { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr) minmax(0, 330px); gap: 22px; padding-block: 18px 30px; align-items: start; }
+@media (max-width: 1180px) { .play { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); } .play aside { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .play { grid-template-columns: minmax(0, 1fr); } }
+.stage { display: grid; gap: 10px; min-width: 0; }
+.status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; height: 3.6rem; overflow: hidden; align-content: center; }
+.chip { font-family: var(--font-data); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--panel); white-space: nowrap; }
+.chip.drawn { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.chip.after { color: var(--ink); border-color: var(--ink); }
+.chip.over { color: #fff; background: var(--bad); border-color: var(--bad); }
+.caption { font-family: var(--font-data); font-size: 0.9rem; }
+.boardbox { height: 560px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; position: relative; }
+.boardbox canvas { display: block; }
+.boardbox .loading[hidden] { display: none; }
+.boardbox .loading { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-data); color: var(--muted); background: var(--panel); border-radius: 14px; text-align: center; padding: 20px; }
+.transport { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button.btn { font: inherit; font-size: 0.95rem; min-height: 40px; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.btn:hover:not(:disabled) { border-color: var(--muted); }
+button.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 92px; font-weight: 600; }
+button.btn:disabled { opacity: 0.45; cursor: default; }
+.speed { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); flex: 1 1 150px; }
+.speed input { flex: 1; accent-color: var(--accent); }
+.speed output { font-family: var(--font-data); min-width: 6.5ch; color: var(--ink); }
+dl.readouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+dl.readouts div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+dl.readouts dt { font-size: 0.75rem; color: var(--muted); }
+dl.readouts dd { margin: 0; font-family: var(--font-data); font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+
+.decision { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+.decision .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.decision .legend { font-size: 0.8rem; color: var(--muted); }
+.plist { margin-top: 8px; display: grid; gap: 2px; height: 492px; align-content: start; }
+.prow { display: grid; grid-template-columns: 30px 7.5em minmax(0, 1fr) 5.5em 6.5em 1.2em; align-items: center; gap: 8px; height: 25px; padding: 0 6px; box-sizing: border-box; border-radius: 6px; border: 1px solid transparent; font-size: 0.88rem; cursor: default; }
+.prow.hdr { font-size: 0.74rem; color: var(--muted); height: 20px; }
+.prow.chosen { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.prow.lose { color: var(--faint); }
+.prow:not(.hdr):hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.prow .bar { height: 10px; border-radius: 0 4px 4px 0; background: var(--grid); position: relative; overflow: hidden; }
+.prow .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--muted); border-radius: 0 4px 4px 0; }
+.prow.best .bar i { background: var(--accent); }
+.prow .v, .prow .o { font-family: var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+.prow .o { color: var(--muted); }
+.prow .star { color: var(--accent); text-align: center; }
+.glyph { width: 30px; height: 22px; }
+.afterbox { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 10px; font-size: 0.92rem; min-height: 5.2em; }
+.afterbox .eq { font-family: var(--font-data); font-size: 0.9rem; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .prow { grid-template-columns: 6.4em minmax(0, 1fr) 3.8em 4.4em 1em; gap: 6px; font-size: 0.82rem; }
+  .prow .glyph, .prow > span:first-child:empty { display: none; }
+  .plist { height: auto; min-height: 260px; }
+  .boardbox { height: 440px; }
+}
+
+aside.panel { display: grid; gap: 12px; min-width: 0; }
+.block { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.block h3 { font-size: 1rem; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: inherit; font-size: 0.9rem; padding: 6px 12px; min-height: 36px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font-family: var(--font-data); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.pgroup { margin: 8px 0 2px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.pol { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; cursor: pointer; font-size: 0.92rem; }
+.pol:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pol input { margin: 0; accent-color: var(--accent); }
+.pol .hv { font-family: var(--font-data); font-size: 0.82rem; color: var(--muted); }
+.pol.off { opacity: 0.4; cursor: default; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+.opts { display: grid; gap: 6px; font-size: 0.9rem; }
+.opts label { display: flex; gap: 8px; align-items: center; }
+.opts input[type=number] { width: 8em; font: inherit; font-family: var(--font-data); padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.details p { margin: 0 0 6px; font-size: 0.9rem; }
+.details .formula { font-family: var(--font-data); font-size: 0.82rem; background: var(--bg); border-radius: 8px; padding: 6px 8px; margin: 6px 0; white-space: pre-wrap; }
+dl.stats { display: grid; grid-template-columns: auto auto; gap: 2px 10px; margin: 0; font-size: 0.86rem; }
+dl.stats dt { color: var(--muted); }
+dl.stats dd { margin: 0; text-align: right; font-family: var(--font-data); }
+.tally { font-size: 0.9rem; }
+.tally .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------- results */
+section.results, section.method { padding-block: 26px 10px; border-top: 1px solid var(--line); }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.cards .wide { grid-column: 1 / -1; }
+@media (max-width: 900px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+.card .note { font-size: 0.86rem; color: var(--muted); margin: 8px 0 0; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-data); font-size: 11px; fill: var(--muted); }
+.chart .tick line { stroke: var(--grid); }
+.chart .axis { stroke: var(--line); }
+.chart .tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-family: var(--font-data); font-size: 0.78rem; line-height: 1.4; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,0.12); z-index: 3; }
+.chart .tip b { font-weight: 500; }
+.clegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.84rem; margin-top: 6px; }
+.clegend span { display: inline-flex; align-items: center; gap: 6px; }
+.clegend i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.clegend i.dash { background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 7px) !important; height: 2px; }
+.clegend i.dot { background: repeating-linear-gradient(90deg, var(--muted) 0 2px, transparent 2px 5px) !important; height: 2px; }
+.cardhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+table.t { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table.t th, table.t td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+table.t th:first-child, table.t td:first-child { text-align: left; }
+table.t th { font-weight: 500; color: var(--muted); font-size: 0.8rem; }
+table.t td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+table.t td:first-child { font-family: var(--font-ui); }
+.tscroll { overflow-x: auto; }
+.heat { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.heat table { border-collapse: separate; border-spacing: 2px; font-size: 0.8rem; }
+table.t.wraps td, table.t.wraps th { white-space: normal; }
+table.t.wraps td:nth-child(2), table.t.wraps th:nth-child(2) { text-align: left; }
+.heat td, .heat th { padding: 3px 5px; text-align: center; font-family: var(--font-data); border-radius: 4px; }
+.heat th { color: var(--muted); font-weight: 400; }
+.heat td.best { outline: 2px solid var(--accent); outline-offset: -2px; }
+.heat .hname { font-size: 0.88rem; margin-bottom: 4px; }
+
+section.method .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 900px) { section.method .cols { grid-template-columns: minmax(0, 1fr); } }
+section.method p, section.method li { max-width: 72ch; }
+.math { font-family: var(--font-data); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; white-space: pre; font-size: 0.9rem; }
+footer { color: var(--muted); font-size: 0.86rem; padding-block: 20px 40px; border-top: 1px solid var(--line); margin-top: 20px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>SZ-Tetris</h1>
+      <p class="lede">Tetris with only S and Z pieces. On small boards the game is solved exactly by dynamic programming; the reinforcement-learning methods of the course learn it by playing, and every learned policy is scored against the exact optimum.</p>
+    </div>
+    <nav class="jump" aria-label="Sections">
+      <a href="#play">Play</a><a href="#results">Results</a><a href="#method">Method</a>
+      <a href="https://github.com/EdoardoCaproni/sz-tetris">Code</a>
+      <button class="theme" id="theme" type="button" aria-label="Switch light or dark theme">◐</button>
+    </nav>
+  </header>
+
+  <section class="play" id="play">
+    <div class="stage">
+      <div class="status" aria-live="polite"><span class="chip" id="chip">start</span><span class="caption" id="caption"></span></div>
+      <div class="boardbox" id="boardbox"><canvas id="board" aria-label="Game board"></canvas><div class="loading" id="loading" hidden></div></div>
+      <div class="transport">
+        <button class="btn primary" id="play-btn" type="button">Play</button>
+        <button class="btn" id="step-btn" type="button" title="One phase: draw the piece, then place it (→)">Step</button>
+        <button class="btn" id="new-btn" type="button" title="New game with the next seed (N)">New game</button>
+        <label class="speed">Speed <input type="range" id="speed" min="0" max="8" step="1" value="2"><output id="speed-out">2 /s</output></label>
+      </div>
+      <dl class="readouts">
+        <div><dt>Rows cleared</dt><dd id="r-rows">0</dd></div>
+        <div><dt>Pieces placed</dt><dd id="r-pieces">0</dd></div>
+        <div><dt>W*(b): rows still expected (optimal play)</dt><dd id="r-w">–</dd></div>
+        <div><dt>Expected final total</dt><dd id="r-total">–</dd></div>
+      </dl>
+    </div>
+
+    <div class="decision">
+      <div class="head"><h3 id="dec-title">Placements of the current piece</h3><span class="legend" id="dec-legend"></span></div>
+      <div class="plist" id="plist"></div>
+      <div class="afterbox" id="afterbox"></div>
+    </div>
+
+    <aside class="panel">
+      <div class="block">
+        <h3>Board</h3>
+        <div class="seg" id="boards" role="group" aria-label="Board size"></div>
+      </div>
+      <div class="block">
+        <h3>Policy</h3>
+        <div id="policies" role="radiogroup" aria-label="Policy"></div>
+      </div>
+      <div class="block details" id="details"></div>
+      <div class="block opts">
+        <label><input type="checkbox" id="opt-pause"> Pause at every afterstate</label>
+        <label><input type="checkbox" id="opt-restart" checked> Start a new game at game over</label>
+        <label>Seed <input type="number" id="opt-seed" value="1" min="0" step="1"></label>
+        <span style="font-size:0.8rem;color:var(--muted)">Same seed = same pieces for every policy. Keys: Space play, → step, N new game.</span>
+      </div>
+      <div class="block tally" id="tally"></div>
+    </aside>
+  </section>
+
+  <section class="results" id="results">
+    <h2>Results</h2>
+    <p class="sub">On the 6-wide boards every number is exact: a learned policy is frozen and evaluated by iterative policy evaluation on the table of all boards, so the curves have no simulation noise. On 10×20 the table is impossible and the expected rows are estimated by Monte Carlo (95% confidence intervals). Bands are the range over the seeds.</p>
+    <div class="cards">
+      <div class="card wide">
+        <h3>Exact solution (width 6)</h3>
+        <div class="tscroll"><table class="t" id="dp-table"></table></div>
+        <p class="note">Value iteration on the afterstates, from W = 0 until the largest change is below 10<sup>−10</sup>. "Endless play" is the check of the termination assumption: the boards from which some policy could survive forever whatever pieces come. It is empty on every board, so every policy ends with probability 1 and the total-reward value iteration converges without a discount.</p>
+      </div>
+      <div class="card">
+        <h3>Value iteration converges</h3>
+        <div class="chart" id="c-vi"></div>
+        <p class="note">Largest change of W per sweep, log scale. Geometric decrease: each sweep looks one piece further ahead, and long games are exponentially rare.</p>
+      </div>
+      <div class="card">
+        <h3>Tabular methods stop scaling</h3>
+        <div class="chart" id="c-scaling"></div>
+        <p class="note">Exact value of the learned greedy policy as a fraction of the optimum, same budget on every board (mean over seeds). Boards: 6,349 → 91,658 → 1,577,685. The linear methods, which do not need a table, are on the right only for comparison.</p>
+      </div>
+      <div class="card wide">
+        <div class="cardhead"><h3>Learning curves, tabular methods</h3><div class="seg" id="tab-board"></div></div>
+        <div class="chart" id="c-tab"></div>
+        <p class="note">Exact expected rows of the greedy policy of each table during training. Settings: the best of the grid on 6×5 for each method (below).</p>
+      </div>
+      <div class="card">
+        <h3>TD(0) on afterstates: how close W gets to W*</h3>
+        <div class="chart" id="c-wrmse"></div>
+        <p class="note">Root-mean-square error of the learned afterstate values against the exact ones, weighted by how often the optimal policy visits each board.</p>
+      </div>
+      <div class="card">
+        <h3>Linear function approximation</h3>
+        <div class="seg" id="lin-board" style="margin-bottom:6px"></div>
+        <div class="chart" id="c-lin"></div>
+        <p class="note" id="lin-note"></p>
+      </div>
+      <div class="card wide">
+        <h3>Grid of settings (6×5, mean over 3 seeds, 2·10<sup>6</sup> episodes)</h3>
+        <div class="heat" id="heat"></div>
+        <p class="note">Exact expected rows of the final greedy policy. Rows: step size α; columns: exploration ε; "opt." = ε = 0 with optimistic initial values q0 = 2H. The outlined cell is the setting used everywhere else. Monte Carlo control averages the returns, so it has no α.</p>
+      </div>
+      <div class="card wide">
+        <h3>Summary</h3>
+        <div class="tscroll"><table class="t" id="summary"></table></div>
+        <p class="note">Expected rows cleared from the empty board, mean over seeds (in brackets: % of the optimum). 6×H: exact; 10×20: Monte Carlo, 2,000 games per seed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="method" id="method">
+    <h2>Method</h2>
+    <div class="cols">
+      <div>
+        <h3>The game as a Markov decision problem</h3>
+        <div class="math">state        x_t = (b_t, p_t)   board, piece
+input        u_t = placement    2W − 3 choices
+dynamics     b_{t+1} = f(b_t, p_t, u_t)
+             drop straight down, clear full rows
+uncertainty  p_{t+1} = S or Z, prob. 1/2 each
+reward       r_t = rows cleared
+termination  piece not inside the board
+             (checked before clearing)
+objective    max E[ Σ_t r_t ], no discount</div>
+        <p>The piece is drawn after the move, so the value can live on the board alone, before the next piece is known: the <b>afterstate</b> (post-decision state).</p>
+        <div class="math">W(b)   = ½ Σ_p max_u [ r(b,p,u) + W(f(b,p,u)) ]
+W(game over) = 0
+V(b,p) = max_u [ r(b,p,u) + W(f(b,p,u)) ]</div>
+        <p>Total reward with a termination state: value iteration converges if every policy ends with probability 1. Rather than relying on the theorem that alternating S and Z pieces always lose on width 2n with n odd, the code checks it on each board: the largest set of boards where some placement always avoids game over and stays in the set is empty.</p>
+      </div>
+      <div>
+        <h3>Methods</h3>
+        <div class="tscroll"><table class="t wraps" id="methods-table"></table></div>
+        <p style="margin-top:10px">Features for the linear methods (Bertsekas and Tsitsiklis): the column heights, the differences of neighbouring heights, the maximum height, the number of holes and a constant, heights and holes divided by H. Not implemented, cited only: the cross-entropy method, the usual strong baseline on Tetris (Szita and Lőrincz, 2006), and deep Q-networks.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Project for the course Dynamic Programming and Reinforcement Learning, University of Siena. SZ-Tetris as a benchmark: I. Szita and Cs. Szepesvári, <i>SZ-Tetris as a benchmark for studying key problems of reinforcement learning</i>, ICML 2010 workshop. Rules, solver and learners in Python (<a href="https://github.com/EdoardoCaproni/sz-tetris">repository</a>); this page replays the exported policies with the same rules in JavaScript.
+  </footer>
+</div>
+
+<script src="engine.js"></script>
+<script src="results.js"></script>
+<script>
+'use strict';
+const E = window.Engine;
+const R = window.SZ_RESULTS || {};
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 2) => (v === null || v === undefined || !isFinite(v)) ? '–' : Number(v).toFixed(d);
+const pct = (v) => (v === null || v === undefined || !isFinite(v)) ? '–' : (100 * v).toFixed(1) + '%';
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// --------------------------------------------------------------- catalogue
+const BOARDS = ['6x4', '6x5', '6x6', '10x20'];
+const SMALL = ['6x4', '6x5', '6x6'];
+const TAB = ['mc', 'sarsa', 'q_learning', 'expected_sarsa', 'td_afterstate'];
+const LIN = ['td_linear', 'reinforce'];
+const M = {
+  optimal: { label: 'Optimal (value iteration)', group: 'Dynamic programming', boards: SMALL },
+  greedy: { label: 'Greedy: most rows now', group: 'Rules of thumb', boards: BOARDS },
+  random: { label: 'Random placement', group: 'Rules of thumb', boards: BOARDS },
+  mc: { label: 'Monte Carlo control', group: 'Tabular RL', boards: SMALL },
+  sarsa: { label: 'Sarsa', group: 'Tabular RL', boards: SMALL },
+  q_learning: { label: 'Q-learning', group: 'Tabular RL', boards: SMALL },
+  expected_sarsa: { label: 'Expected Sarsa', group: 'Tabular RL', boards: SMALL },
+  td_afterstate: { label: 'TD(0) on afterstates', group: 'Tabular RL', boards: SMALL },
+  td_linear: { label: 'Linear TD(0) on afterstates', group: 'Linear function approximation', boards: ['6x5', '6x6', '10x20'] },
+  reinforce: { label: 'REINFORCE with baseline', group: 'Linear function approximation', boards: ['6x5', '6x6', '10x20'] }
+};
+const TEXT = {
+  optimal: ['Value iteration on the afterstates, then the placement that maximises r + W*(b′).', 'W(b) ← ½ Σ_p max_u [r + W(b′)]'],
+  greedy: ['The greedy policy of the DP lectures: the immediate reward only. It clears a row when it can and otherwise places at random (avoiding a placement that ends the game).', 'u = argmax_u r(b,p,u)'],
+  random: ['Every placement with the same probability.', 'π(u | b,p) = 1 / (2W − 3)'],
+  mc: ['On-policy Monte Carlo control: ε-greedy episodes, Q = average of the returns that followed each (state, placement).', 'Q(S,A) ← Q + (G − Q) / N(S,A)'],
+  sarsa: ['On-policy TD control: the target uses the placement actually chosen next.', 'Q(S,A) ← Q + α [R + Q(S′,A′) − Q(S,A)]'],
+  q_learning: ['Off-policy TD control: the target uses the best placement in the next state, whatever is played.', 'Q(S,A) ← Q + α [R + max_a Q(S′,a) − Q(S,A)]'],
+  expected_sarsa: ['TD control with the expectation over the ε-greedy policy in the next state.', 'Q(S,A) ← Q + α [R + Σ_a π(a|S′) Q(S′,a) − Q(S,A)]'],
+  td_afterstate: ['One value per board instead of per (board, piece, placement): a sample of the afterstate Bellman equation each time a piece is drawn.', 'W(b) ← W(b) + α [max_u (r + W(b′)) − W(b)]'],
+  td_linear: ['The same update with W(b) ≈ w·φ(b): semi-gradient TD(0) with the board features. Works on any board.', 'w ← w + α [max_u (r + w·φ(b′)) − w·φ(b)] φ(b)'],
+  reinforce: ['A softmax policy over the placements, preferences linear in the features of the afterstate; Monte Carlo policy gradient with a learned baseline.', 'θ ← θ + α (G_t − v̂(S_t)) ∇ln π(A_t|S_t,θ)']
+};
+const SPEEDS = [0.5, 1, 2, 4, 8, 16, 32, 64, Infinity];
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const methodColor = (m) => cssVar('--m-' + m);
+
+// --------------------------------------------------------------- data
+const DATA = {}, TABLES = {}, loaded = {};
+function loadScript(src) {
+  if (!loaded[src]) loaded[src] = new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = ok; s.onerror = () => fail(new Error('cannot load ' + src));
+    document.head.appendChild(s);
+  });
+  return loaded[src];
+}
+async function ensureBoard(b, needTabular) {
+  const big = b === '6x6';
+  if (!DATA[b]) {
+    if (big) showLoading('Loading the table of 1,577,685 boards (about 20 MB)…');
+    await loadScript('data_' + b + '.js');
+    DATA[b] = window.SZ_DATA[b];
+    if (SMALL.includes(b)) TABLES[b] = new E.Table(DATA[b]);
+  }
+  if (needTabular && SMALL.includes(b) && !DATA[b].tab) {
+    if (big) showLoading('Loading the six learned 6×6 tables…');
+    await loadScript('data_' + b + '_tabular.js');
+    const x = window.SZ_TABULAR[b];
+    DATA[b].tab = x.tabular;
+    DATA[b].tdW = x.tdW ? E.decodeF16(x.tdW) : null;
+  }
+  showLoading(null);
+}
+function showLoading(msg) {
+  const el = $('loading');
+  el.hidden = !msg;
+  if (msg) el.textContent = msg;
+}
+
+/* A policy can be played on a board if it was trained (or exists) there. */
+function available(m, b) {
+  if (!M[m].boards.includes(b)) return false;
+  if (m === 'optimal' || m === 'greedy' || m === 'random') return true;
+  return !!(R.shown && R.shown[b] && R.shown[b][m]);
+}
+
+// --------------------------------------------------------------- headline numbers
+function dpRow(b) { const H = +b.split('x')[1]; return (R.dp || []).find((r) => r.H === H && r.W === 6); }
+function headline(m, b) {
+  if (SMALL.includes(b)) {
+    const d = dpRow(b);
+    if (m === 'optimal') return d && d.optimal;
+    if (m === 'greedy' || m === 'random') return d && d[m];
+  } else if (m === 'greedy' || m === 'random') {
+    return R.baselines_10x20 && R.baselines_10x20[m].mean;
+  }
+  const s = R.shown && R.shown[b] && R.shown[b][m];
+  return s ? s.value : null;
+}
+
+// --------------------------------------------------------------- game state
+const S = { board: '6x5', policy: 'optimal', seed: 1, playing: false, speed: 2 };
+let G = null;             // the game
+let anim = null;          // current animation
+let hoverA = -1;
+let tally = { n: 0, sum: 0, sum2: 0, key: '' };
+
+function geometry(b) { const [W, H] = b.split('x').map(Number); return { W, H, pl: E.placements(W), full: (1 << W) - 1 }; }
+
+function newGame(seed) {
+  const g = geometry(S.board);
+  G = Object.assign(g, {
+    seed, rows: new Array(g.H).fill(0), colors: Array.from({ length: g.H }, () => new Array(g.W).fill(0)),
+    pieceRng: E.mulberry32(seed), policyRng: E.mulberry32((seed ^ 0x9e3779b9) >>> 0),
+    score: 0, pieces: 0, phase: 'after', p: -1, dec: null, last: null, over: false
+  });
+  anim = null;
+  render();
+}
+
+/* What a policy sees: the board, the piece, every placement's afterstate. */
+function ctxFor(g, rows, p, rng) {
+  const t = TABLES[S.board] || null;
+  const after = E.afterstates(rows, g.W, g.H, g.pl, p);
+  const idx = t ? t.index(E.key(rows, g.W)) : -1;
+  return { rows, W: g.W, H: g.H, p, pl: g.pl, after, idx, table: t, rng };
+}
+
+function choose(ctx) {
+  const m = S.policy, d = DATA[S.board], P = E.policies;
+  if (m === 'optimal') return P.table(ctx, d.opt);
+  if (m === 'greedy') return P.greedy(ctx);
+  if (m === 'random') return P.random(ctx);
+  if (m === 'td_afterstate') return P.afterstateTable(ctx, d.tab.td_afterstate, d.tdW);
+  if (TAB.includes(m)) return P.table(ctx, d.tab[m]);
+  if (m === 'td_linear') return P.linear(ctx, d.linear.td_linear);
+  return P.softmax(ctx, d.linear.reinforce);
+}
+
+function decide(ctx) {
+  const out = choose(ctx);
+  out.exact = E.exactValues(ctx);
+  out.ctx = ctx;
+  return out;
+}
+
+function boardValue(rows) {
+  const t = TABLES[S.board];
+  if (!t) return null;
+  const i = t.index(E.key(rows, G.W));
+  return i >= 0 ? t.wstar[i] : null;
+}
+
+/* One phase: 'after' -> draw a piece and decide; 'drawn' -> place it. */
+function advance(animate) {
+  if (G.over) return;
+  if (G.phase === 'after') {
+    G.p = G.pieceRng() < 0.5 ? 0 : 1;
+    G.dec = decide(ctxFor(G, G.rows, G.p, G.policyRng));
+    G.phase = 'drawn';
+    return;
+  }
+  const a = G.dec.a, cells = G.pl.cells[G.p][a];
+  const info = E.fullRowsAfter(G.rows, G.H, G.full, cells);
+  const before = G.rows.slice(), beforeColors = G.colors.map((r) => r.slice());
+  const c = E.drop(G.rows, G.H, G.full, cells);
+  G.last = { p: G.p, a, y: info.y, full: info.full, cleared: c, before, beforeColors };
+  if (c === E.GAME_OVER) {
+    G.over = true; G.phase = 'over';
+  } else {
+    // colours follow the cells: place, then remove the full rows
+    for (const [x, dy] of cells) G.colors[info.y + dy][x] = G.p + 1;
+    const keep = G.colors.filter((row, r) => !info.full.includes(r));
+    while (keep.length < G.H) keep.push(new Array(G.W).fill(0));
+    G.colors = keep;
+    G.score += c; G.pieces += 1; G.phase = 'after';
+  }
+  if (animate) anim = { t0: performance.now(), dur: fallDuration(), kind: 'fall' };
+}
+
+function fallDuration() { return Math.min(420, 900 / Math.max(S.speed, 1)); }
+
+// --------------------------------------------------------------- drawing
+const cv = $('board'), cx = cv.getContext('2d');
+const HEAD = 3;
+let cell = 20;
+function sizeCanvas() {
+  const box = $('boardbox');
+  const w = box.clientWidth - 24, h = box.clientHeight - 24;
+  cell = Math.max(8, Math.floor(Math.min(w / G.W, h / (G.H + HEAD))));
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = G.W * cell * dpr; cv.height = (G.H + HEAD) * cell * dpr;
+  cv.style.width = G.W * cell + 'px'; cv.style.height = (G.H + HEAD) * cell + 'px';
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function yToPx(r) { return (G.H + HEAD - 1 - r) * cell; }
+function rect(x, r, fill, inset = 1.5, radius = 3) {
+  cx.fillStyle = fill;
+  const px = x * cell + inset, py = yToPx(r) + inset, s = cell - 2 * inset;
+  cx.beginPath(); cx.roundRect(px, py, s, s, radius); cx.fill();
+}
+function outline(x, r, stroke) {
+  cx.strokeStyle = stroke; cx.lineWidth = 2; cx.setLineDash([4, 3]);
+  const px = x * cell + 3, py = yToPx(r) + 3, s = cell - 6;
+  cx.beginPath(); cx.roundRect(px, py, s, s, 3); cx.stroke(); cx.setLineDash([]);
+}
+function draw(now) {
+  const C = { well: cssVar('--well'), cell: cssVar('--cell'), s: cssVar('--piece-s'), z: cssVar('--piece-z'),
+    line: cssVar('--line'), muted: cssVar('--muted'), bad: cssVar('--bad'), flash: cssVar('--flash'), ink: cssVar('--ink') };
+  const pc = (p) => p === 0 ? C.s : C.z;
+  cx.clearRect(0, 0, G.W * cell, (G.H + HEAD) * cell);
+  // the well
+  cx.fillStyle = C.well;
+  cx.beginPath(); cx.roundRect(0, HEAD * cell, G.W * cell, G.H * cell, 8); cx.fill();
+  // top of the board
+  cx.strokeStyle = C.muted; cx.lineWidth = 1; cx.setLineDash([6, 4]);
+  cx.beginPath(); cx.moveTo(0, HEAD * cell - 0.5); cx.lineTo(G.W * cell, HEAD * cell - 0.5); cx.stroke(); cx.setLineDash([]);
+  let rows = G.rows, colors = G.colors, falling = null, flash = null;
+  if (anim && G.last) {
+    const t = (now - anim.t0) / anim.dur;
+    if (t < 1) {
+      rows = G.last.before; colors = G.last.beforeColors;
+      const start = G.H, end = G.last.y;
+      falling = { p: G.last.p, a: G.last.a, y: start + (end - start) * Math.min(1, t / 0.7) };
+      if (t >= 0.7 && G.last.full.length) flash = G.last.full;
+    } else anim = null;
+  }
+  for (let r = 0; r < G.H; r++) for (let x = 0; x < G.W; x++) {
+    const on = (rows[r] >> x) & 1;
+    rect(x, r, on ? pc(colors[r][x] - 1 < 0 ? 0 : colors[r][x] - 1) : C.cell, on ? 1.5 : 2.5);
+  }
+  if (falling) {
+    for (const [x, dy] of G.pl.cells[falling.p][falling.a]) {
+      const rr = falling.y + dy;
+      cx.fillStyle = pc(falling.p);
+      cx.beginPath(); cx.roundRect(x * cell + 1.5, (G.H + HEAD - 1 - rr) * cell + 1.5, cell - 3, cell - 3, 3); cx.fill();
+    }
+    if (flash) for (const r of flash) { cx.fillStyle = C.flash; cx.globalAlpha = 0.7; cx.fillRect(0, yToPx(r), G.W * cell, cell); cx.globalAlpha = 1; }
+  } else if (G.phase === 'drawn' && G.dec) {
+    // the piece above the board in its chosen placement, and where it lands
+    const cells = G.pl.cells[G.p][G.dec.a];
+    const y = E.landingRow(G.rows, G.H, cells);
+    for (const [x, dy] of cells) outline(x, y + dy, pc(G.p));
+    for (const [x, dy] of cells) rect(x, G.H + dy, pc(G.p));
+    if (hoverA >= 0 && hoverA !== G.dec.a) {
+      const hc = G.pl.cells[G.p][hoverA], hy = E.landingRow(G.rows, G.H, hc);
+      for (const [x, dy] of hc) outline(x, hy + dy, C.ink);
+    }
+  } else if (G.phase === 'over' && G.last) {
+    for (const [x, dy] of G.pl.cells[G.last.p][G.last.a]) rect(x, G.last.y + dy, C.bad);
+  }
+}
+
+// --------------------------------------------------------------- side panels
+function glyph(p, a) {
+  const cells = G.pl.cells[p][a], x0 = G.pl.column[a];
+  const s = 6, pad = 2;
+  const maxY = Math.max(...cells.map((c) => c[1]));
+  const sq = cells.map(([x, dy]) => `<rect x="${pad + (x - x0) * s}" y="${pad + (maxY - dy) * s}" width="${s - 1}" height="${s - 1}" rx="1"/>`).join('');
+  return `<svg class="glyph" viewBox="0 0 30 22" aria-hidden="true" fill="${p === 0 ? 'var(--piece-s)' : 'var(--piece-z)'}">${sq}</svg>`;
+}
+
+function renderDecision() {
+  const small = SMALL.includes(S.board);
+  const pl = $('plist'), ab = $('afterbox');
+  const ownName = { greedy: 'rows now', random: '', reinforce: 'π(u)', td_afterstate: 'r + W(b′)', td_linear: 'r + w·φ(b′)' }[S.policy] || '';
+  $('dec-legend').textContent = small ? 'bar = exact r + W*(b′) · ★ optimal · outlined = chosen' : 'bar = the method’s own value · outlined = chosen';
+  if (G.phase !== 'drawn' || !G.dec) {
+    pl.innerHTML = `<div class="prow hdr"><span></span><span>placement</span><span>${small ? 'exact r + W*(b′)' : ''}</span><span></span><span>${esc(ownName)}</span><span></span></div>` +
+      `<p style="color:var(--muted);font-size:0.92rem;margin:10px 6px">${G.over ? 'Game over: the last piece did not fit inside the board.' : 'Afterstate: the board after the move, before the next piece is drawn. Press Step to draw it.'}</p>`;
+  } else {
+    const d = G.dec, A = G.pl.A;
+    const exact = d.exact;
+    const own = d.probs ? d.probs : d.own;
+    const barv = small ? exact : (own || new Array(A).fill(0));
+    const lo = Math.min(0, ...barv.filter((v) => v !== null)), hi = Math.max(1e-9, ...barv.filter((v) => v !== null));
+    const best = exact ? Math.max(...exact) : null;
+    let html = `<div class="prow hdr"><span></span><span>placement</span><span>${small ? 'exact r + W*(b′)' : esc(ownName)}</span><span>${small ? 'exact' : ''}</span><span>${small ? esc(ownName) : ''}</span><span></span></div>`;
+    for (let a = 0; a < A; a++) {
+      const s = d.ctx.after[a];
+      const isBest = exact && exact[a] >= best - 2e-3 && !s.over;
+      const v = barv[a] === null ? 0 : barv[a];
+      const w = Math.max(0, (v - lo) / (hi - lo)) * 100;
+      const ov = own ? (d.probs ? (100 * own[a]).toFixed(1) + '%' : (own[a] === null || (s.over && !d.probs) ? '–' : fmt(own[a]))) : '';
+      const name = (G.pl.orient[a] ? 'upright' : 'flat') + ' · c' + (G.pl.column[a] + 1);
+      html += `<div class="prow${a === d.a ? ' chosen' : ''}${s.over ? ' lose' : ''}${isBest ? ' best' : ''}" data-a="${a}">` +
+        glyph(G.p, a) + `<span>${name}</span>` +
+        `<span class="bar">${s.over ? '' : `<i style="width:${w.toFixed(1)}%"></i>`}</span>` +
+        `<span class="v">${s.over ? 'loses' : small ? fmt(exact[a]) + (s.r ? ' ' : '') : (own && !d.probs ? fmt(own[a]) : '')}</span>` +
+        `<span class="o">${small ? ov : (d.probs ? ov : '')}</span><span class="star">${isBest ? '★' : ''}</span></div>`;
+    }
+    pl.innerHTML = html;
+  }
+  // the afterstate box: the Bellman equation on the current board
+  if (small && !G.over) {
+    const best = [0, 1].map((p) => Math.max(...E.exactValues(ctxFor(G, G.rows, p, null))));
+    const w = boardValue(G.rows);
+    ab.innerHTML = `<div><b>${G.phase === 'drawn' ? 'Before the piece was drawn' : 'This afterstate'}</b>, the value is the average over the two pieces of the best placement:</div>` +
+      `<div class="eq">W*(b) = ½·max<sub>u</sub>[r+W*(b′)]<sub>S</sub> + ½·max<sub>u</sub>[r+W*(b′)]<sub>Z</sub> = ½·${fmt(best[0])} + ½·${fmt(best[1])} = ${fmt(w)}</div>`;
+  } else if (!small) {
+    ab.innerHTML = '<div style="color:var(--muted)">10×20 has too many boards for a table: no exact values here, only what each method learned.</div>';
+  } else ab.innerHTML = '';
+}
+
+function renderStatus() {
+  const chip = $('chip'), cap = $('caption');
+  chip.className = 'chip';
+  if (G.phase === 'over') {
+    chip.classList.add('over'); chip.textContent = 'game over';
+    cap.textContent = `${G.score} rows in ${G.pieces} pieces`;
+  } else if (G.phase === 'drawn') {
+    chip.classList.add('drawn'); chip.textContent = `state: piece ${E.PIECES[G.p]} drawn`;
+    const a = G.dec.a;
+    cap.textContent = `→ ${G.pl.orient[a] ? 'upright' : 'flat'}, column ${G.pl.column[a] + 1}`;
+  } else {
+    chip.classList.add('after'); chip.textContent = G.pieces ? 'afterstate: next piece not drawn' : 'start: empty board';
+    cap.textContent = G.last && G.last.cleared > 0 ? `+${G.last.cleared} row${G.last.cleared > 1 ? 's' : ''}` : '';
+  }
+  $('r-rows').textContent = G.score;
+  $('r-pieces').textContent = G.pieces;
+  const w = SMALL.includes(S.board) && !G.over ? boardValue(G.rows) : null;
+  $('r-w').textContent = G.over ? '0' : fmt(w);
+  $('r-total').textContent = w === null ? (G.over ? G.score : '–') : fmt(G.score + w);
+}
+
+function render() {
+  sizeCanvas();
+  draw(performance.now());
+  renderStatus();
+  renderDecision();
+}
+
+// --------------------------------------------------------------- policy panel
+function renderBoards() {
+  $('boards').innerHTML = BOARDS.map((b) => `<button type="button" aria-pressed="${b === S.board}" data-b="${b}">${b.replace('x', '×')}</button>`).join('');
+}
+function renderPolicies() {
+  let html = '', group = '';
+  for (const m of Object.keys(M)) {
+    if (M[m].group !== group) { group = M[m].group; html += `<div class="pgroup">${group}</div>`; }
+    const ok = available(m, S.board);
+    const h = ok ? headline(m, S.board) : null;
+    const sw = TAB.includes(m) || LIN.includes(m) ? `<span class="swatch" style="background:var(--m-${m})"></span>` : '';
+    html += `<label class="pol${ok ? '' : ' off'}"><input type="radio" name="pol" value="${m}" ${m === S.policy ? 'checked' : ''} ${ok ? '' : 'disabled'}>` +
+      `<span>${sw}${M[m].label}</span><span class="hv">${ok ? fmt(h, S.board === '10x20' ? 1 : 2) : (M[m].boards.includes(S.board) ? 'no data' : 'not on this board')}</span></label>`;
+  }
+  $('policies').innerHTML = html;
+}
+function renderDetails() {
+  const m = S.policy, b = S.board, small = SMALL.includes(b);
+  const [txt, formula] = TEXT[m];
+  let stats = [];
+  const d = dpRow(b);
+  if (small && d) stats.push(['Optimum (exact)', fmt(d.optimal, 3)]);
+  if (m === 'optimal') {
+    stats.push(['Expected pieces placed', fmt(d.optimal_pieces)], ['Boards in the table', d.boards.toLocaleString('en')], ['Value iteration sweeps', d.sweeps]);
+  } else if (m === 'greedy' || m === 'random') {
+    if (small) stats.push(['Expected rows (exact)', fmt(d[m], 3)], ['Expected pieces', fmt(d[m + '_pieces'])]);
+    else if (R.baselines_10x20) { const x = R.baselines_10x20[m]; stats.push(['Expected rows (MC)', fmt(x.mean, 3) + ' ± ' + fmt(x.ci95, 3)], ['Games', x.games.toLocaleString('en')]); }
+  } else if (TAB.includes(m)) {
+    const f = R.tabular_final && R.tabular_final[+b.split('x')[1]] && R.tabular_final[+b.split('x')[1]][m];
+    const sh = R.shown && R.shown[b] && R.shown[b][m];
+    if (sh) stats.push(['This run (seed ' + sh.seed + ')', fmt(sh.value, 3)]);
+    if (f) stats.push(['Mean of ' + f.seeds + ' seeds', fmt(f.value, 3) + ' (' + pct(f.ratio) + ')'], ['Range', fmt(f.lo) + ' – ' + fmt(f.hi)],
+      ['Optimal placements', pct(f.agreement)], ['Episodes', f.episodes.toExponential(0).replace('e+', '·10^')],
+      ['Settings', (m === 'mc' ? '' : 'α ' + f.alpha + ', ') + 'ε ' + f.eps + (f.q0 > 0 ? ', q0 ' + f.q0 : '')], ['Training time', fmt(f.seconds, 0) + ' s']);
+  } else if (LIN.includes(m)) {
+    const f = R.linear && R.linear[b] && R.linear[b][m];
+    const sh = R.shown && R.shown[b] && R.shown[b][m];
+    if (sh) stats.push(['This run (seed ' + sh.seed + ')', fmt(sh.value, small ? 3 : 1) + (sh.ci95 ? ' ± ' + fmt(sh.ci95, 1) : '')]);
+    if (f) {
+      stats.push(['Mean of ' + f.seeds + ' seeds', fmt(f.value, small ? 3 : 1) + (f.ratio ? ' (' + pct(f.ratio) + ')' : '')], ['Range', fmt(f.lo, small ? 2 : 1) + ' – ' + fmt(f.hi, small ? 2 : 1)],
+        ['Step size', String(f.alpha)], ['Pieces of training', (f.steps[f.steps.length - 1]).toExponential(0).replace('e+', '·10^')], ['Training time', fmt(f.seconds, 0) + ' s']);
+    }
+  }
+  $('details').innerHTML = `<h3>${M[m].label}</h3><p>${txt}</p><div class="formula">${esc(formula)}</div>` +
+    `<dl class="stats">${stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+}
+function renderTally() {
+  const key = S.board + S.policy;
+  if (tally.key !== key) tally = { n: 0, sum: 0, sum2: 0, key };
+  const mean = tally.n ? tally.sum / tally.n : null;
+  const sd = tally.n > 1 ? Math.sqrt((tally.sum2 - tally.n * mean * mean) / (tally.n - 1)) : null;
+  const h = headline(S.policy, S.board);
+  $('tally').innerHTML = `<h3>Games played here</h3>` +
+    `<div>${tally.n} game${tally.n === 1 ? '' : 's'}${mean !== null ? `: mean <span class="num">${fmt(mean)}</span> rows` + (sd !== null ? ` ± <span class="num">${fmt(1.96 * sd / Math.sqrt(tally.n))}</span>` : '') : ''}</div>` +
+    `<div style="color:var(--muted);font-size:0.84rem">${h !== null && h !== undefined ? (SMALL.includes(S.board) ? 'Exact expected value: ' : 'Estimate from the experiments: ') + fmt(h, 3) : ''}</div>` +
+    `<div class="row"><button class="btn" type="button" id="fast100">Play 100 games fast</button><button class="btn" type="button" id="tally-reset">Reset</button></div>`;
+  $('fast100').onclick = () => playFast(100);
+  $('fast100').disabled = fastRunning;
+  $('tally-reset').onclick = () => { tally.n = 0; tally.sum = 0; tally.sum2 = 0; renderTally(); };
+}
+function addTally(score) { tally.n++; tally.sum += score; tally.sum2 += score * score; renderTally(); }
+
+// --------------------------------------------------------------- running
+let timer = null, lastTick = 0, fastRunning = false;
+function setPlaying(on) {
+  S.playing = on;
+  $('play-btn').textContent = on ? 'Pause' : 'Play';
+  if (on) { lastTick = 0; requestAnimationFrame(loop); }
+}
+function loop(now) {
+  if (!S.playing) return;
+  const sp = S.speed;
+  if (sp === Infinity) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 12 && S.playing) { if (!tick(false)) break; }
+    render();
+  } else {
+    const interval = 1000 / sp / 2;     // two phases per piece
+    if (!anim && now - lastTick >= interval) {
+      lastTick = now;
+      tick(sp <= 4);
+      render();
+    } else if (anim) draw(now);
+  }
+  if (S.playing) requestAnimationFrame(loop);
+}
+/* One phase; returns false when play must stop. */
+function tick(animate) {
+  if (G.over) {
+    if ($('opt-restart').checked) { S.seed++; $('opt-seed').value = S.seed; newGame(S.seed); return true; }
+    setPlaying(false); return false;
+  }
+  const wasDrawn = G.phase === 'drawn';
+  advance(animate);
+  if (G.over) addTally(G.score);
+  if (wasDrawn && !G.over && $('opt-pause').checked) { setPlaying(false); return false; }
+  return true;
+}
+
+/* A whole game without drawing; returns the rows cleared. */
+function playOne(seed) {
+  const g = geometry(S.board), rows = new Array(g.H).fill(0);
+  const pieceRng = E.mulberry32(seed), policyRng = E.mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  let score = 0;
+  for (let n = 0; n < 1e6; n++) {
+    const p = pieceRng() < 0.5 ? 0 : 1;
+    const a = choose(ctxFor(g, rows, p, policyRng)).a;
+    const c = E.drop(rows, g.H, g.full, g.pl.cells[p][a]);
+    if (c === E.GAME_OVER) break;
+    score += c;
+  }
+  return score;
+}
+
+function playFast(n) {
+  if (fastRunning) return;
+  fastRunning = true;
+  $('fast100').disabled = true;
+  const key = S.board + S.policy, base = 100000 + Math.floor(Math.random() * 1e6);
+  let k = 0;
+  (function chunk() {
+    if (S.board + S.policy !== key) { fastRunning = false; return; }
+    const t0 = performance.now();
+    while (k < n && performance.now() - t0 < 30) addTally(playOne(base + k++));
+    if (k < n) setTimeout(chunk, 0);
+    else { fastRunning = false; renderTally(); }
+  })();
+}
+
+async function select(board, policy) {
+  setPlaying(false);
+  if (!available(policy, board)) policy = board === '10x20' ? (available('td_linear', board) ? 'td_linear' : 'greedy') : 'optimal';
+  setControls(false);
+  try { await ensureBoard(board, TAB.includes(policy)); }
+  catch (e) { showLoading('Could not load the data for ' + board + ': ' + e.message); setControls(true); return; }
+  S.board = board; S.policy = policy;
+  renderBoards(); renderPolicies(); renderDetails(); renderTally();
+  newGame(S.seed);
+  setControls(true);
+}
+function setControls(on) {
+  for (const id of ['play-btn', 'step-btn', 'new-btn']) $(id).disabled = !on;
+}
+
+// --------------------------------------------------------------- events
+$('boards').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) select(b.dataset.b, S.policy); });
+$('policies').addEventListener('change', (e) => select(S.board, e.target.value));
+$('play-btn').onclick = () => setPlaying(!S.playing);
+$('step-btn').onclick = () => { setPlaying(false); tick(true); render(); requestAnimationFrame(function f(now) { if (anim) { draw(now); requestAnimationFrame(f); } }); };
+$('new-btn').onclick = () => { S.seed++; $('opt-seed').value = S.seed; newGame(S.seed); };
+$('opt-seed').onchange = () => { S.seed = Math.max(0, parseInt($('opt-seed').value, 10) || 0); newGame(S.seed); };
+$('speed').oninput = () => { S.speed = SPEEDS[+$('speed').value]; $('speed-out').textContent = S.speed === Infinity ? 'max' : S.speed + ' /s'; };
+$('plist').addEventListener('mousemove', (e) => { const r = e.target.closest('.prow[data-a]'); const a = r ? +r.dataset.a : -1; if (a !== hoverA) { hoverA = a; draw(performance.now()); } });
+$('plist').addEventListener('mouseleave', () => { hoverA = -1; draw(performance.now()); });
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!S.playing); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); $('step-btn').click(); }
+  else if (e.key === 'n' || e.key === 'N') $('new-btn').click();
+});
+new ResizeObserver(() => { if (G) { sizeCanvas(); draw(performance.now()); } }).observe($('boardbox'));
+$('theme').onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark';
+  render(); renderResults();
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { render(); renderResults(); });
+
+// =============================================================== charts
+/* lineChart(el, {series:[{name,color,x,y,lo,hi}], refs:[{y,name,style}], xLog, yLog, xLabel, yLabel, xFmt, yFmt, height}) */
+function lineChart(el, o) {
+  const W = Math.max(300, el.clientWidth || 600), Hh = o.height || 260;
+  const m = { l: 52, r: 16, t: 10, b: 38 };
+  const all = [];
+  o.series.forEach((s) => s.x.forEach((x, i) => all.push([x, s.y[i], s.lo ? s.lo[i] : s.y[i], s.hi ? s.hi[i] : s.y[i]])));
+  const xs = all.map((p) => p[0]);
+  let x0 = o.xMin !== undefined ? o.xMin : Math.min(...xs), x1 = o.xMax !== undefined ? o.xMax : Math.max(...xs);
+  let ylo = Math.min(...all.map((p) => p[2]), ...(o.refs || []).map((r) => r.y)), yhi = Math.max(...all.map((p) => p[3]), ...(o.refs || []).map((r) => r.y));
+  if (o.yMin !== undefined) ylo = o.yMin;
+  if (o.yMax !== undefined) yhi = o.yMax;
+  if (!o.yLog) { const pad = (yhi - ylo) * 0.05 || 1; yhi += pad; if (o.yMin === undefined) ylo = Math.max(ylo - pad, Math.min(0, ylo)); }
+  const tx = (x) => o.xLog ? Math.log10(x) : x, ty = (y) => o.yLog ? Math.log10(Math.max(y, 1e-300)) : y;
+  const X = (x) => m.l + (tx(x) - tx(x0)) / (tx(x1) - tx(x0) || 1) * (W - m.l - m.r);
+  const Y = (y) => { const c = Math.min(Math.max(y, ylo), yhi); return m.t + (1 - (ty(c) - ty(ylo)) / (ty(yhi) - ty(ylo) || 1)) * (Hh - m.t - m.b); };
+  const ticks = (lo, hi, log) => {
+    if (log) { const out = []; for (let e = Math.ceil(Math.log10(lo)); e <= Math.floor(Math.log10(hi)); e++) out.push(Math.pow(10, e)); return out.length > 7 ? out.filter((_, i) => i % 2 === 0) : out; }
+    const span = hi - lo, step0 = Math.pow(10, Math.floor(Math.log10(span / 5))), step = [1, 2, 5, 10].map((k) => k * step0).find((s) => span / s <= 6);
+    const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10)); return out;
+  };
+  const xf = o.xFmt || ((v) => o.xLog ? (v >= 1e3 ? '10' + sup(Math.round(Math.log10(v))) : String(v)) : String(v));
+  const yf = o.yFmt || ((v) => o.yLog ? '10' + sup(Math.round(Math.log10(v))) : String(+v.toFixed(3)));
+  const clip = 'clip' + Math.random().toString(36).slice(2);
+  let svg = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(o.aria || '')}"><defs><clipPath id="${clip}"><rect x="${m.l}" y="${m.t - 6}" width="${W - m.l - m.r + 6}" height="${Hh - m.t - m.b + 12}"/></clipPath></defs>`;
+  for (const v of ticks(ylo, yhi, o.yLog)) svg += `<g class="tick"><line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${yf(v)}</text></g>`;
+  for (const v of (o.xTicks || ticks(x0, x1, o.xLog))) svg += `<text x="${X(v)}" y="${Hh - m.b + 16}" text-anchor="middle">${xf(v)}</text>`;
+  svg += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${Hh - m.b}" y2="${Hh - m.b}"/>`;
+  if (o.xLabel) svg += `<text x="${(m.l + W - m.r) / 2}" y="${Hh - 4}" text-anchor="middle">${o.xLabel}</text>`;
+  if (o.yLabel) svg += `<text x="12" y="${m.t + (Hh - m.t - m.b) / 2}" text-anchor="middle" transform="rotate(-90 12 ${m.t + (Hh - m.t - m.b) / 2})">${o.yLabel}</text>`;
+  for (const r of o.refs || []) {
+    svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(r.y)}" y2="${Y(r.y)}" stroke="${r.style === 'dot' ? cssVar('--muted') : cssVar('--ink')}" stroke-width="1.5" stroke-dasharray="${r.style === 'dot' ? '2 4' : '6 4'}"/>`;
+  }
+  svg += `<g clip-path="url(#${clip})">`;
+  for (const s of o.series) {
+    if (s.lo) {
+      const up = s.x.map((x, i) => `${X(x)},${Y(s.hi[i])}`), dn = s.x.map((x, i) => `${X(x)},${Y(s.lo[i])}`).reverse();
+      svg += `<polygon points="${up.concat(dn).join(' ')}" fill="${s.color}" opacity="0.14"/>`;
+    }
+  }
+  for (const s of o.series) {
+    svg += `<polyline points="${s.x.map((x, i) => `${X(x)},${Y(s.y[i])}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (s.markers) for (let i = 0; i < s.x.length; i++) svg += `<circle cx="${X(s.x[i])}" cy="${Y(s.y[i])}" r="4" fill="${s.color}" stroke="${cssVar('--panel')}" stroke-width="2"/>`;
+  }
+  svg += '</g>';
+  svg += `<line class="cross" x1="0" x2="0" y1="${m.t}" y2="${Hh - m.b}" stroke="${cssVar('--muted')}" stroke-width="1" visibility="hidden"/>`;
+  svg += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${Hh - m.t - m.b}" fill="transparent" class="hit"/></svg>`;
+  const legend = o.series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).concat((o.refs || []).map((r) => `<span><i class="${r.style === 'dot' ? 'dot' : 'dash'}"></i>${esc(r.name)}</span>`)).join('');
+  el.innerHTML = svg + `<div class="tip" hidden></div><div class="clegend">${legend}</div>`;
+  // crosshair and tooltip: snap to the nearest x of the first series
+  const svgEl = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
+  const xsAll = [...new Set(o.series.flatMap((s) => s.x))].sort((a, b) => a - b);
+  el.querySelector('.hit').addEventListener('mousemove', (ev) => {
+    const r = svgEl.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    let best = xsAll[0];
+    for (const x of xsAll) if (Math.abs(X(x) - px) < Math.abs(X(best) - px)) best = x;
+    cross.setAttribute('x1', X(best)); cross.setAttribute('x2', X(best)); cross.setAttribute('visibility', 'visible');
+    const rowsTip = o.series.map((s) => { const i = s.x.indexOf(best); return i < 0 ? null : [s, s.y[i]]; }).filter(Boolean).sort((a, b) => b[1] - a[1]);
+    tip.innerHTML = `<div style="color:var(--muted)">${o.tipX ? o.tipX(best) : best}</div>` + rowsTip.map(([s, v]) => `<div><span class="swatch" style="background:${s.color}"></span>${esc(s.name)} <b>${o.tipY ? o.tipY(v) : fmt(v, 3)}</b></div>`).join('') +
+      (o.refs || []).map((rf) => `<div style="color:var(--muted)">${esc(rf.name)} ${o.tipY ? o.tipY(rf.y) : fmt(rf.y, 3)}</div>`).join('');
+    tip.hidden = false;
+    const left = X(best) * r.width / W;
+    tip.style.left = Math.min(left + 12, r.width - tip.offsetWidth - 4) + 'px';
+    tip.style.top = '8px';
+  });
+  el.querySelector('.hit').addEventListener('mouseleave', () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); });
+}
+const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+function sup(n) { return String(n).split('').map((c) => SUP[c] || c).join(''); }
+const LABEL = (m) => M[m].label;
+
+let tabBoard = '6x5', linBoard = '10x20';
+function renderResults() {
+  if (!R.dp) return;
+  // DP table
+  $('dp-table').innerHTML = '<tr><th>Board</th><th>Boards</th><th>States (board, piece)</th><th>Sweeps</th><th>Endless play</th><th>Optimal rows</th><th>Optimal pieces</th><th>Greedy rows</th><th>Random rows</th></tr>' +
+    R.dp.map((r) => `<tr><td>6×${r.H}</td><td>${r.boards.toLocaleString('en')}</td><td>${r.states.toLocaleString('en')}</td><td>${r.sweeps}</td><td>${r.safe_set === 0 ? 'none' : r.safe_set}</td><td>${fmt(r.optimal, 4)}</td><td>${fmt(r.optimal_pieces)}</td><td>${fmt(r.greedy, 4)}</td><td>${fmt(r.random, 4)}</td></tr>`).join('');
+  // VI convergence
+  lineChart($('c-vi'), {
+    series: R.dp.map((r, i) => ({ name: '6×' + r.H, color: cssVar('--seq-' + (i + 1)), x: r.deltas.map((_, k) => k + 1), y: r.deltas })),
+    yLog: true, xLabel: 'sweep', yLabel: 'max |ΔW|', tipX: (x) => 'sweep ' + x, tipY: (v) => v.toExponential(1), aria: 'Value iteration convergence', yMin: 1e-11
+  });
+  // tabular curves
+  $('tab-board').innerHTML = SMALL.map((b) => `<button type="button" aria-pressed="${b === tabBoard}" data-b="${b}">${b.replace('x', '×')}</button>`).join('');
+  const H = +tabBoard.split('x')[1], tc = R.tabular_curves && R.tabular_curves[H];
+  if (tc) {
+    const d = dpRow(tabBoard);
+    lineChart($('c-tab'), {
+      series: TAB.filter((m) => tc[m]).map((m) => ({ name: LABEL(m), color: methodColor(m), x: tc[m].episodes, y: tc[m].value.mean, lo: tc[m].value.lo, hi: tc[m].value.hi })),
+      refs: [{ y: d.optimal, name: 'optimum', style: 'dash' }, { y: d.greedy, name: 'greedy', style: 'dot' }],
+      xLog: true, xLabel: 'episodes (games played)', yLabel: 'expected rows', tipX: (x) => x.toLocaleString('en') + ' episodes', height: 300, aria: 'Learning curves', yMin: 0
+    });
+  }
+  // TD afterstate error
+  const wr = [4, 5, 6].filter((h) => R.tabular_curves && R.tabular_curves[h] && R.tabular_curves[h].td_afterstate && R.tabular_curves[h].td_afterstate.w_rmse);
+  if (wr.length) lineChart($('c-wrmse'), {
+    series: wr.map((h, i) => { const c = R.tabular_curves[h].td_afterstate; return { name: '6×' + h, color: cssVar('--seq-' + (i + 2)), x: c.episodes, y: c.w_rmse.mean, lo: c.w_rmse.lo, hi: c.w_rmse.hi }; }),
+    xLog: true, xLabel: 'episodes', yLabel: 'RMS error of W (rows)', tipX: (x) => x.toLocaleString('en') + ' episodes', aria: 'Afterstate value error', yMin: 0
+  });
+  // scaling
+  const tf = R.tabular_final || {};
+  const sx = [4, 5, 6].filter((h) => tf[h]);
+  if (sx.length) {
+    const series = TAB.map((m) => ({ name: LABEL(m), color: methodColor(m), x: sx.filter((h) => tf[h][m]), y: sx.filter((h) => tf[h][m]).map((h) => tf[h][m].ratio), markers: true }));
+    for (const m of LIN) {
+      const xs = [5, 6].filter((h) => R.linear && R.linear['6x' + h] && R.linear['6x' + h][m]);
+      if (xs.length) series.push({ name: LABEL(m), color: methodColor(m), x: xs, y: xs.map((h) => R.linear['6x' + h][m].ratio), markers: true });
+    }
+    lineChart($('c-scaling'), {
+      series, refs: [{ y: 1, name: 'optimum', style: 'dash' }], xLabel: 'board height H (width 6)', yLabel: 'fraction of the optimum',
+      xTicks: [4, 5, 6], xFmt: (v) => '6×' + v, xMin: 3.8, xMax: 6.2, yMax: 1.01,
+      yMin: Math.max(0, Math.floor((Math.min(...series.flatMap((s) => s.y)) - 0.05) * 10) / 10), tipX: (x) => '6×' + x, tipY: pct, aria: 'Scaling with board height', height: 300
+    });
+  }
+  // linear
+  $('lin-board').innerHTML = ['6x5', '6x6', '10x20'].map((b) => `<button type="button" aria-pressed="${b === linBoard}" data-b="${b}">${b.replace('x', '×')}</button>`).join('');
+  const L = R.linear && R.linear[linBoard];
+  if (L) {
+    const refs = [];
+    if (SMALL.includes(linBoard)) { const d = dpRow(linBoard); refs.push({ y: d.optimal, name: 'optimum', style: 'dash' }, { y: d.greedy, name: 'greedy', style: 'dot' }); }
+    else if (R.baselines_10x20) refs.push({ y: R.baselines_10x20.greedy.mean, name: 'greedy', style: 'dot' });
+    lineChart($('c-lin'), {
+      series: LIN.filter((m) => L[m]).map((m) => ({ name: LABEL(m) + ' (α ' + L[m].alpha + ')', color: methodColor(m), x: L[m].steps, y: L[m].curve.mean, lo: L[m].curve.lo, hi: L[m].curve.hi })),
+      refs, xLog: true, xLabel: 'pieces placed in training', yLabel: 'expected rows', tipX: (x) => x.toLocaleString('en') + ' pieces', tipY: (v) => fmt(v, SMALL.includes(linBoard) ? 3 : 1), aria: 'Linear methods', yMin: 0
+    });
+    $('lin-note').textContent = SMALL.includes(linBoard)
+      ? 'Exact value of the learned policy. The gap to the optimum is the price of describing a board with 14 numbers instead of looking it up in a table. Step sizes: best of {0.001, 0.003, 0.01} for TD and of {0.001, …, 0.1} for REINFORCE (mean of 5 seeds); on the small boards REINFORCE still gains a little at the largest step.'
+      : 'Monte Carlo estimate at each checkpoint (200 games, so the curve is noisy); the final values in the summary use 2,000 games per seed. Step size: the best of the same grids as on the small boards. Random play clears ' + fmt(R.baselines_10x20 ? R.baselines_10x20.random.mean : null, 3) + ' rows.';
+  }
+  // grid heat tables (6x5)
+  const grid = R.tabular_grid || [];
+  if (grid.length) {
+    const ramp = (v, lo, hi) => { const t = (v - lo) / (hi - lo || 1); return `color-mix(in srgb, var(--seq-3) ${Math.round(10 + 70 * t)}%, var(--panel))`; };
+    const vals = grid.map((g) => g.mean), lo = Math.min(...vals), hi = Math.max(...vals);
+    const tf5 = (R.tabular_final || {})[5] || {};
+    $('heat').innerHTML = TAB.map((m) => {
+      const gm = grid.filter((g) => g.method === m);
+      const alphas = [...new Set(gm.map((g) => g.alpha))].sort((a, b) => a - b), eps = [...new Set(gm.filter((g) => !g.optimistic).map((g) => g.eps))].sort((a, b) => a - b);
+      const sel = tf5[m];
+      const cellH = (g) => { if (!g) return '<td></td>'; const isSel = sel && g.alpha === sel.alpha && g.eps === sel.eps && (g.optimistic === (sel.q0 > 0)); const dark = (g.mean - lo) / (hi - lo) > 0.55; return `<td class="${isSel ? 'best' : ''}" style="background:${ramp(g.mean, lo, hi)};color:${dark ? '#fff' : 'var(--ink)'}" title="${esc(LABEL(m))}: α ${g.alpha}, ε ${g.eps}${g.optimistic ? ', optimistic' : ''}: ${fmt(g.mean, 3)} (seeds ${fmt(g.lo)}–${fmt(g.hi)})">${fmt(g.mean)}</td>`; };
+      let t = `<div><div class="hname"><span class="swatch" style="background:var(--m-${m})"></span>${LABEL(m)}</div><table><tr><th>${m === 'mc' ? '' : 'α \\ ε'}</th>${eps.map((e) => `<th>${e}</th>`).join('')}<th>opt.</th></tr>`;
+      for (const a of alphas) t += `<tr><th>${m === 'mc' ? '' : a}</th>${eps.map((e) => cellH(gm.find((g) => g.alpha === a && g.eps === e && !g.optimistic))).join('')}${cellH(gm.find((g) => g.alpha === a && g.optimistic))}</tr>`;
+      return t + '</table></div>';
+    }).join('');
+  }
+  // summary
+  const cols = ['6x4', '6x5', '6x6', '10x20'];
+  const cellS = (m, b) => {
+    let v = null, ratio = null, ci = null;
+    const small = SMALL.includes(b), d = small ? dpRow(b) : null;
+    if (m === 'optimal') v = small ? d.optimal : null;
+    else if (m === 'greedy' || m === 'random') { if (small) v = d[m]; else if (R.baselines_10x20) { v = R.baselines_10x20[m].mean; ci = R.baselines_10x20[m].ci95; } }
+    else if (TAB.includes(m)) { const f = tf[+b.split('x')[1]] && tf[+b.split('x')[1]][m]; if (f && small) v = f.value; }
+    else { const f = R.linear && R.linear[b] && R.linear[b][m]; if (f) { v = f.value; ci = f.ci95; } }
+    if (v === null) return '<td style="color:var(--faint)">–</td>';
+    if (small) ratio = v / d.optimal;
+    const dec = small ? 3 : (v < 1 ? 3 : 1);
+    return `<td>${fmt(v, dec)}${ci ? ' ± ' + fmt(ci, dec) : ''}${ratio !== null && m !== 'optimal' ? ` <span style="color:var(--muted)">(${(100 * ratio).toFixed(ratio < 0.1 ? 1 : 0)}%)</span>` : ''}</td>`;
+  };
+  $('summary').innerHTML = `<tr><th>Policy</th>${cols.map((b) => `<th>${b.replace('x', '×')}</th>`).join('')}</tr>` +
+    Object.keys(M).map((m) => `<tr><td>${TAB.includes(m) || LIN.includes(m) ? `<span class="swatch" style="background:var(--m-${m})"></span>` : ''}${M[m].label}</td>${cols.map((b) => cellS(m, b)).join('')}</tr>`).join('');
+  // methods table
+  $('methods-table').innerHTML = '<tr><th>Method</th><th>Course topic</th><th>Code</th></tr>' + [
+    ['Value iteration, afterstates', 'Infinite horizon, total cost; RLI 4.4, 6.8', 'dp.py'],
+    ['Policy evaluation, occupancy', 'RLI 4.1; Markov chains', 'dp.py'],
+    ['Greedy and random baselines', 'Stochastic DP (greedy policy)', 'dp.py, simulate.py'],
+    ['Monte Carlo estimates, 95% CI', 'Simulation tools', 'simulate.py'],
+    ['Monte Carlo control', 'RLI 5.4', 'tabular.py'],
+    ['Sarsa, Q-learning, Expected Sarsa', 'RLI 6.4–6.6', 'tabular.py'],
+    ['TD(0) on afterstates', 'RLI 6.1, 6.8', 'tabular.py'],
+    ['Linear semi-gradient TD(0)', 'RLI 9.3–9.4', 'linear.py'],
+    ['REINFORCE with baseline', 'RLI 13.3–13.4', 'linear.py']
+  ].map((r) => `<tr><td>${r[0]}</td><td style="font-family:var(--font-ui)">${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+}
+$('tab-board').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { tabBoard = b.dataset.b; renderResults(); } });
+$('lin-board').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { linBoard = b.dataset.b; renderResults(); } });
+let resizeT = null;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderResults, 150); });
+
+// --------------------------------------------------------------- start
+$('speed').dispatchEvent(new Event('input'));
+renderResults();
+select('6x5', 'optimal');
+</script>
+</body>
+</html>
