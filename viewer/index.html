@@ -281,6 +281,11 @@ footer { color: var(--muted); font-size: 0.86rem; padding-block: 20px 40px; bord
         <p class="note" id="lin-note"></p>
       </div>
       <div class="card wide">
+        <h3>Tables on 10×20: what is learned does not carry over</h3>
+        <div class="tscroll"><table class="t" id="t20-table"></table></div>
+        <p class="note" id="t20-note"></p>
+      </div>
+      <div class="card wide">
         <h3>Grid of settings (6×5, mean over 3 seeds, 2·10<sup>6</sup> episodes)</h3>
         <div class="heat" id="heat"></div>
         <p class="note">Exact expected rows of the final greedy policy. Rows: step size α; columns: exploration ε; "opt." = ε = 0 with optimistic initial values q0 = 2H. The outlined cell is the setting used everywhere else. Monte Carlo control averages the returns, so it has no α.</p>
@@ -288,7 +293,7 @@ footer { color: var(--muted); font-size: 0.86rem; padding-block: 20px 40px; bord
       <div class="card wide">
         <h3>Summary</h3>
         <div class="tscroll"><table class="t" id="summary"></table></div>
-        <p class="note">Expected rows cleared from the empty board, mean over seeds (in brackets: % of the optimum). 6×H: exact; 10×20: Monte Carlo, 2,000 games per seed.</p>
+        <p class="note">Expected rows cleared from the empty board, mean over seeds (in brackets: % of the optimum). 6×H: exact; 10×20: Monte Carlo, 2,000 games per seed (rules of thumb: 100,000 games); tabular methods on 10×20: a hash table of the boards met.</p>
       </div>
     </div>
   </section>
@@ -344,8 +349,9 @@ const TAB = ['mc', 'sarsa', 'q_learning', 'expected_sarsa', 'td_afterstate'];
 const LIN = ['td_linear', 'reinforce'];
 const M = {
   optimal: { label: 'Optimal (value iteration)', group: 'Dynamic programming', boards: SMALL },
-  greedy: { label: 'Greedy: most rows now', group: 'Rules of thumb', boards: BOARDS },
   random: { label: 'Random placement', group: 'Rules of thumb', boards: BOARDS },
+  greedy: { label: 'Greedy: most rows now', group: 'Rules of thumb', boards: BOARDS },
+  heuristic: { label: 'Heuristic: holes, steps, height', group: 'Rules of thumb', boards: BOARDS },
   mc: { label: 'Monte Carlo control', group: 'Tabular RL', boards: SMALL },
   sarsa: { label: 'Sarsa', group: 'Tabular RL', boards: SMALL },
   q_learning: { label: 'Q-learning', group: 'Tabular RL', boards: SMALL },
@@ -358,6 +364,7 @@ const TEXT = {
   optimal: ['Value iteration on the afterstates, then the placement that maximises r + W*(b′).', 'W(b) ← ½ Σ_p max_u [r + W(b′)]'],
   greedy: ['The greedy policy of the DP lectures: the immediate reward only. It clears a row when it can and otherwise places at random (avoiding a placement that ends the game).', 'u = argmax_u r(b,p,u)'],
   random: ['Every placement with the same probability.', 'π(u | b,p) = 1 / (2W − 3)'],
+  heuristic: ['One-step look-ahead with a hand-made estimate J̃ of the rows still to come: penalties for holes, for steps between columns and for height, with weights fixed in advance (not tuned). Greedy is the same rule with J̃ = 0, linear TD learns the weights, value iteration computes J* exactly.', 'u = argmax_u [ r + J̃(b′) ],   J̃(b) = C − (holes + ½ Σ|h_c − h_c+1| + 0.1 Σ h_c)'],
   mc: ['On-policy Monte Carlo control: ε-greedy episodes, Q = average of the returns that followed each (state, placement).', 'Q(S,A) ← Q + (G − Q) / N(S,A)'],
   sarsa: ['On-policy TD control: the target uses the placement actually chosen next.', 'Q(S,A) ← Q + α [R + Q(S′,A′) − Q(S,A)]'],
   q_learning: ['Off-policy TD control: the target uses the best placement in the next state, whatever is played.', 'Q(S,A) ← Q + α [R + max_a Q(S′,a) − Q(S,A)]'],
@@ -407,12 +414,14 @@ function showLoading(msg) {
 function available(m, b) {
   if (!M[m].boards.includes(b)) return false;
   if (m === 'optimal' || m === 'greedy' || m === 'random') return true;
+  if (m === 'heuristic') return !!(R.heuristic && R.heuristic[b]);
   return !!(R.shown && R.shown[b] && R.shown[b][m]);
 }
 
 // --------------------------------------------------------------- headline numbers
 function dpRow(b) { const H = +b.split('x')[1]; return (R.dp || []).find((r) => r.H === H && r.W === 6); }
 function headline(m, b) {
+  if (m === 'heuristic') return R.heuristic && R.heuristic[b] ? R.heuristic[b].value : null;
   if (SMALL.includes(b)) {
     const d = dpRow(b);
     if (m === 'optimal') return d && d.optimal;
@@ -462,6 +471,7 @@ function choose(ctx) {
   if (m === 'optimal') return P.table(ctx, d.opt);
   if (m === 'greedy') return P.greedy(ctx);
   if (m === 'random') return P.random(ctx);
+  if (m === 'heuristic') return P.linear(ctx, R.heuristic[S.board].weights);
   if (m === 'td_afterstate') return P.afterstateTable(ctx, d.tab.td_afterstate, d.tdW);
   if (TAB.includes(m)) return P.table(ctx, d.tab[m]);
   if (m === 'td_linear') return P.linear(ctx, d.linear.td_linear);
@@ -594,7 +604,7 @@ function glyph(p, a) {
 function renderDecision() {
   const small = SMALL.includes(S.board);
   const pl = $('plist'), ab = $('afterbox');
-  const ownName = { greedy: 'rows now', random: '', reinforce: 'π(u)', td_afterstate: 'r + W(b′)', td_linear: 'r + w·φ(b′)' }[S.policy] || '';
+  const ownName = { greedy: 'rows now', random: '', reinforce: 'π(u)', td_afterstate: 'r + W(b′)', td_linear: 'r + w·φ(b′)', heuristic: 'r + J̃(b′)' }[S.policy] || '';
   $('dec-legend').textContent = small ? 'bar = exact r + W*(b′) · ★ optimal · outlined = chosen' : 'bar = the method’s own value · outlined = chosen';
   if (G.phase !== 'drawn' || !G.dec) {
     pl.innerHTML = `<div class="prow hdr"><span></span><span>placement</span><span>${small ? 'exact r + W*(b′)' : ''}</span><span></span><span>${esc(ownName)}</span><span></span></div>` +
@@ -671,14 +681,15 @@ function renderPolicies() {
     if (M[m].group !== group) { group = M[m].group; html += `<div class="pgroup">${group}</div>`; }
     const ok = available(m, S.board);
     const h = ok ? headline(m, S.board) : null;
+    const t20 = S.board === '10x20' && TAB.includes(m) && R.tabular_10x20 && R.tabular_10x20[m];
     const sw = TAB.includes(m) || LIN.includes(m) ? `<span class="swatch" style="background:var(--m-${m})"></span>` : '';
     html += `<label class="pol${ok ? '' : ' off'}"><input type="radio" name="pol" value="${m}" ${m === S.policy ? 'checked' : ''} ${ok ? '' : 'disabled'}>` +
-      `<span>${sw}${M[m].label}</span><span class="hv">${ok ? fmt(h, S.board === '10x20' && h >= 1 ? 1 : 2) : (M[m].boards.includes(S.board) ? 'no data' : 'not on this board')}</span></label>`;
+      `<span>${sw}${M[m].label}</span><span class="hv"${t20 ? ' title="Results only: the table is not shipped to the page"' : ''}>${ok ? fmt(h, S.board === '10x20' && h >= 1 ? 1 : 2) : t20 ? fmt(t20.value, 2) + ' *' : (M[m].boards.includes(S.board) ? 'no data' : 'not on this board')}</span></label>`;
   }
   $('policies').innerHTML = html;
   $('pnote').textContent = SMALL.includes(S.board)
     ? 'Expected rows from the empty board, computed exactly. Learned policies: mean of 5 training seeds.'
-    : 'Expected rows from the empty board, estimated by Monte Carlo. Learned policies: mean of 5 training seeds, 2,000 games each; greedy and random: 100,000 games.';
+    : 'Expected rows from the empty board, estimated by Monte Carlo. Learned policies: mean of 5 training seeds, 2,000 games each; rules of thumb: 100,000 games. * Tabular: a hash table of the boards met, results only (the tables are not shipped to the page).';
 }
 function renderDetails() {
   const m = S.policy, b = S.board, small = SMALL.includes(b);
@@ -691,6 +702,10 @@ function renderDetails() {
   } else if (m === 'greedy' || m === 'random') {
     if (small) stats.push(['Expected rows (exact)', fmt(d[m], 3)], ['Expected pieces', fmt(d[m + '_pieces'])]);
     else if (R.baselines_10x20) { const x = R.baselines_10x20[m]; stats.push(['Expected rows (MC)', fmt(x.mean, 3) + ' ± ' + fmt(x.ci95, 3)], ['Games', x.games.toLocaleString('en')]); }
+  } else if (m === 'heuristic') {
+    const x = R.heuristic && R.heuristic[b];
+    if (x && small) stats.push(['Expected rows (exact)', fmt(x.value, 3) + ' (' + pct(x.ratio) + ')'], ['Expected pieces', fmt(x.pieces)], ['Optimal placements', pct(x.agreement)]);
+    else if (x) stats.push(['Expected rows (MC)', fmt(x.value, 2) + ' ± ' + fmt(x.ci95, 2)], ['Expected pieces', fmt(x.pieces, 1)], ['Games', x.games.toLocaleString('en')]);
   } else if (TAB.includes(m)) {
     const f = R.tabular_final && R.tabular_final[+b.split('x')[1]] && R.tabular_final[+b.split('x')[1]][m];
     const sh = R.shown && R.shown[b] && R.shown[b][m];
@@ -904,6 +919,16 @@ function sup(n) { return String(n).split('').map((c) => SUP[c] || c).join(''); }
 const LABEL = (m) => M[m].label;
 
 let tabBoard = '6x5', linBoard = '10x20';
+/* The stopping check of exp_linear.py for the settings shown on 10x20. */
+function plateauText() {
+  const P = R.plateau_10x20, L = R.linear && R.linear['10x20'];
+  if (!P || !L) return '';
+  return LIN.filter((m) => L[m]).map((m) => {
+    const r = P.find((x) => x.method === m && x.alpha === L[m].alpha);
+    if (!r) return '';
+    return `${LABEL(m)} ${fmt(r.mean_half, 1)} rows at half the budget, ${fmt(r.mean_end, 1)} at the end (${r.converged ? 'plateau' : 'still improving'}).`;
+  }).join(' ');
+}
 function renderResults() {
   if (!R.dp) return;
   // DP table
@@ -921,7 +946,7 @@ function renderResults() {
     const d = dpRow(tabBoard);
     lineChart($('c-tab'), {
       series: TAB.filter((m) => tc[m]).map((m) => ({ name: LABEL(m), color: methodColor(m), x: tc[m].episodes, y: tc[m].value.mean, lo: tc[m].value.lo, hi: tc[m].value.hi })),
-      refs: [{ y: d.optimal, name: 'optimum', style: 'dash' }, { y: d.greedy, name: 'greedy', style: 'dot' }],
+      refs: [{ y: d.optimal, name: 'optimum', style: 'dash' }, { y: d.greedy, name: 'greedy', style: 'dot' }].concat(R.heuristic && R.heuristic[tabBoard] ? [{ y: R.heuristic[tabBoard].value, name: 'heuristic', style: 'dot' }] : []),
       xLog: true, xLabel: 'episodes (games played)', yLabel: 'expected rows', tipX: (x) => x.toLocaleString('en') + ' episodes', height: 300, aria: 'Learning curves', yMin: 0
     });
   }
@@ -953,13 +978,26 @@ function renderResults() {
     const refs = [];
     if (SMALL.includes(linBoard)) { const d = dpRow(linBoard); refs.push({ y: d.optimal, name: 'optimum', style: 'dash' }, { y: d.greedy, name: 'greedy', style: 'dot' }); }
     else if (R.baselines_10x20) refs.push({ y: R.baselines_10x20.greedy.mean, name: 'greedy', style: 'dot' });
+    if (R.heuristic && R.heuristic[linBoard]) refs.push({ y: R.heuristic[linBoard].value, name: 'heuristic', style: 'dot' });
     lineChart($('c-lin'), {
       series: LIN.filter((m) => L[m]).map((m) => ({ name: LABEL(m) + ' (α ' + L[m].alpha + ')', color: methodColor(m), x: L[m].steps, y: L[m].curve.mean, lo: L[m].curve.lo, hi: L[m].curve.hi })),
       refs, xLog: true, xLabel: 'pieces placed in training', yLabel: 'expected rows', tipX: (x) => x.toLocaleString('en') + ' pieces', tipY: (v) => fmt(v, SMALL.includes(linBoard) ? 3 : 1), aria: 'Linear methods', yMin: 0
     });
     $('lin-note').textContent = SMALL.includes(linBoard)
       ? 'Exact value of the learned policy. The gap to the optimum is the price of describing a board with 14 numbers instead of looking it up in a table. Step sizes: best of {0.001, 0.003, 0.01} for TD and of {0.001, …, 0.1} for REINFORCE (mean of 5 seeds); on the small boards REINFORCE still gains a little at the largest step.'
-      : 'Monte Carlo estimate at each checkpoint (200 games, so the curve is noisy); the final values in the summary use 2,000 games per seed. Step size: the best of the same grids as on the small boards. Random play clears ' + fmt(R.baselines_10x20 ? R.baselines_10x20.random.mean : null, 3) + ' rows.';
+      : 'Monte Carlo estimate at each checkpoint (' + (R.plateau_10x20 ? '1,000' : '200') + ' games); the final values in the summary use 2,000 games per seed. Step size: the best of the same grids as on the small boards.' + (R.plateau_10x20 ? ' Budget fixed in advance, then checked: ' + plateauText() : '') + ' Random play clears ' + fmt(R.baselines_10x20 ? R.baselines_10x20.random.mean : null, 3) + ' rows.';
+  }
+  // tabular on 10x20
+  const T20 = R.tabular_10x20;
+  if (T20) {
+    const any = TAB.find((m) => T20[m]);
+    const ref = (name, x, extra) => x ? `<tr><td>${name}</td><td>${fmt(x.value !== undefined ? x.value : x.mean, x.value > 20 ? 1 : 2)} ± ${fmt(x.ci95, x.value > 20 ? 1 : 2)}</td><td colspan="3" style="color:var(--muted);font-family:var(--font-ui)">${extra}</td></tr>` : '';
+    $('t20-table').innerHTML = '<tr><th>Policy</th><th>Rows</th><th>Boards in the table</th><th>Boards per piece of training</th><th>Boards met in test games that were in the table</th></tr>' +
+      TAB.filter((m) => T20[m]).map((m) => { const x = T20[m]; return `<tr><td><span class="swatch" style="background:var(--m-${m})"></span>${LABEL(m)}</td><td>${fmt(x.value, 2)} ± ${fmt(x.ci95, 2)}</td><td>${Math.round(x.boards).toLocaleString('en')}</td><td>${fmt(x.boards / x.steps, 2)}</td><td>${pct(x.coverage)}</td></tr>`; }).join('') +
+      ref(M.greedy.label, R.baselines_10x20 && R.baselines_10x20.greedy, 'no table') +
+      ref(M.heuristic.label, R.heuristic && R.heuristic['10x20'], 'no table, hand-made J̃ on 14 features') +
+      ref(M.td_linear.label, R.linear && R.linear['10x20'] && R.linear['10x20'].td_linear, '14 weights instead of a table');
+    $('t20-note').textContent = `Each tabular method with its best setting on 6×5, ${T20[any].seeds} seeds, ${Math.round(T20[any].steps / 1e6)} million pieces of training each. A table learns the value of a board only from visits to that same board. More than half of the pieces placed in training lead to a board never seen before, and in test games the boards already in the table are mostly the first, nearly empty ones; further up the policy has nothing to go on and every placement ties. TD(0) on afterstates does best because it needs one value per board and the rows it compares come from the rules, not from the table. Linear TD describes every board with the same 14 features, so what it learns on one board applies to all the similar ones: with the same pieces of training it clears over ten times more rows.`;
   }
   // grid heat tables (6x5)
   const grid = R.tabular_grid || [];
@@ -984,11 +1022,12 @@ function renderResults() {
     const small = SMALL.includes(b), d = small ? dpRow(b) : null;
     if (m === 'optimal') v = small ? d.optimal : null;
     else if (m === 'greedy' || m === 'random') { if (small) v = d[m]; else if (R.baselines_10x20) { v = R.baselines_10x20[m].mean; ci = R.baselines_10x20[m].ci95; } }
-    else if (TAB.includes(m)) { const f = tf[+b.split('x')[1]] && tf[+b.split('x')[1]][m]; if (f && small) v = f.value; }
+    else if (m === 'heuristic') { const x = R.heuristic && R.heuristic[b]; if (x) { v = x.value; ci = small ? null : x.ci95; } }
+    else if (TAB.includes(m)) { const f = small ? tf[+b.split('x')[1]] && tf[+b.split('x')[1]][m] : R.tabular_10x20 && R.tabular_10x20[m]; if (f) { v = f.value; ci = small ? null : f.ci95; } }
     else { const f = R.linear && R.linear[b] && R.linear[b][m]; if (f) { v = f.value; ci = f.ci95; } }
     if (v === null) return '<td style="color:var(--faint)">–</td>';
     if (small) ratio = v / d.optimal;
-    const dec = small ? 3 : (v < 1 ? 3 : 1);
+    const dec = small ? 3 : (v < 1 ? 3 : v < 20 ? 2 : 1);
     return `<td>${fmt(v, dec)}${ci ? ' ± ' + fmt(ci, dec) : ''}${ratio !== null && m !== 'optimal' ? ` <span style="color:var(--muted)">(${(100 * ratio).toFixed(ratio < 0.1 ? 1 : 0)}%)</span>` : ''}</td>`;
   };
   $('summary').innerHTML = `<tr><th>Policy</th>${cols.map((b) => `<th>${b.replace('x', '×')}</th>`).join('')}</tr>` +
@@ -998,10 +1037,12 @@ function renderResults() {
     ['Value iteration, afterstates', 'Infinite horizon, total cost; RLI 4.4, 6.8', 'dp.py'],
     ['Policy evaluation, occupancy', 'RLI 4.1; Markov chains', 'dp.py'],
     ['Greedy and random baselines', 'Stochastic DP (greedy policy)', 'dp.py, simulate.py'],
+    ['Heuristic: look-ahead with a hand-made J̃', 'Approximation in value space (one-step look-ahead)', 'tetris.py'],
     ['Monte Carlo estimates, 95% CI', 'Simulation tools', 'simulate.py'],
     ['Monte Carlo control', 'RLI 5.4', 'tabular.py'],
     ['Sarsa, Q-learning, Expected Sarsa', 'RLI 6.4–6.6', 'tabular.py'],
     ['TD(0) on afterstates', 'RLI 6.1, 6.8', 'tabular.py'],
+    ['The same five on 10×20: hash table of the boards met', 'RLI 9.1 (why generalisation is needed)', 'tabular_hash.py'],
     ['Linear semi-gradient TD(0)', 'RLI 9.3–9.4', 'linear.py'],
     ['REINFORCE with baseline', 'RLI 13.3–13.4', 'linear.py']
   ].map((r) => `<tr><td>${r[0]}</td><td style="font-family:var(--font-ui)">${r[1]}</td><td>${r[2]}</td></tr>`).join('');

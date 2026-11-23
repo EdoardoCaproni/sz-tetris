@@ -71,15 +71,26 @@ positive probability.
 | Value iteration on afterstates, termination check | infinite horizon, total cost; RLI 4.4, 6.8 | [`dp.py`](src/dp.py) |
 | Exact policy evaluation, expected visits (absorbing chain) | RLI 4.1; Markov chains | [`dp.py`](src/dp.py) |
 | Greedy (most rows now) and random baselines | stochastic DP, greedy policy | [`dp.py`](src/dp.py), [`simulate.py`](src/simulate.py) |
+| Heuristic: one-step look-ahead with a hand-made $\tilde J$ | approximation in value space | [`tetris.py`](src/tetris.py) |
 | Monte Carlo estimates with 95% confidence intervals | simulation tools | [`simulate.py`](src/simulate.py) |
 | On-policy Monte Carlo control (ε-soft) | RLI 5.4 | [`tabular.py`](src/tabular.py) |
 | Sarsa, Q-learning, Expected Sarsa (ε-greedy, optimistic initial values) | RLI 2.6, 6.4–6.6 | [`tabular.py`](src/tabular.py) |
 | TD(0) on afterstates | RLI 6.1, 6.8 | [`tabular.py`](src/tabular.py) |
+| The same five on 10×20, with a hash table of the boards met | RLI 9.1: why generalisation is needed | [`tabular_hash.py`](src/tabular_hash.py) |
 | Linear semi-gradient TD(0) on afterstates | RLI 9.3–9.4 | [`linear.py`](src/linear.py) |
 | REINFORCE with baseline, softmax-linear policy | RLI 13.3–13.4 | [`linear.py`](src/linear.py) |
 
 The linear methods use the Bertsekas–Tsitsiklis features: column heights,
 differences of neighbouring heights, maximum height, holes, and a constant.
+
+Four of the policies use the same rule, one-step look-ahead
+$u = \arg\max_u [r + \tilde J(b')]$, and differ only in $\tilde J$:
+
+- greedy: $\tilde J = 0$;
+- heuristic: $\tilde J(b) = C - (\text{holes} + \tfrac12\sum_c|h_c - h_{c+1}| + 0.1\sum_c h_c)$,
+  weights fixed in advance, not tuned;
+- linear TD: the same features, learned weights;
+- value iteration: $\tilde J = W^\ast$, exact.
 The cross-entropy method (Szita and Lőrincz, 2006), the usual strong baseline
 on Tetris, and deep Q-networks are outside the course and are not
 implemented.
@@ -90,18 +101,20 @@ Expected rows cleared from the empty board, mean over 5 seeds (% of the
 optimum in brackets).
 - **6×H:** exact.
 - **10×20:** Monte Carlo, 2,000 games per seed.
-- **Tabular methods:** 10⁷ episodes each, with the best setting of a grid on 6×5.
+- **Tabular methods:** 10⁷ episodes each, with the best setting of a grid on 6×5;
+  on 10×20, 10⁷ pieces each with a hash table of the boards met.
 
 | Policy | 6×4 | 6×5 | 6×6 | 10×20 |
 |---|---:|---:|---:|---:|
 | Optimal (value iteration) | **4.33** | **7.43** | **11.38** | – |
 | Greedy: most rows now | 0.50 (12%) | 0.53 (7.1%) | 0.60 (5.3%) | 0.14 |
 | Random placement | 0.03 (0.7%) | 0.04 (0.6%) | 0.06 (0.5%) | 0.01 |
-| Monte Carlo control | 4.15 (96%) | 6.93 (93%) | 8.72 (77%) | – |
-| Sarsa | 4.10 (95%) | 6.48 (87%) | 9.52 (84%) | – |
-| Q-learning | 4.01 (93%) | 6.59 (89%) | 10.04 (88%) | – |
-| Expected Sarsa | 4.02 (93%) | 6.47 (87%) | 9.32 (82%) | – |
-| TD(0) on afterstates | 4.18 (97%) | 7.26 (98%) | 10.88 (96%) | – |
+| Heuristic: holes, steps, height | 2.08 (48%) | 3.12 (42%) | 4.14 (36%) | 10.82 ± 0.03 |
+| Monte Carlo control | 4.15 (96%) | 6.93 (93%) | 8.72 (77%) | 1.81 |
+| Sarsa | 4.10 (95%) | 6.48 (87%) | 9.52 (84%) | 2.33 |
+| Q-learning | 4.01 (93%) | 6.59 (89%) | 10.04 (88%) | 2.40 |
+| Expected Sarsa | 4.02 (93%) | 6.47 (87%) | 9.32 (82%) | 2.43 |
+| TD(0) on afterstates | 4.18 (97%) | 7.26 (98%) | 10.88 (96%) | 7.32 |
 | Linear TD(0) on afterstates | – | 4.97 (67%) | 6.17 (54%) | 87.9 ± 1.5 |
 | REINFORCE with baseline | – | 6.63 (89%) | 9.43 (83%) | 36.3 ± 1.0 |
 
@@ -131,6 +144,14 @@ What the numbers say:
   same features reaches 89% / 83%. A likely reason: acting greedily on
   approximate values can pick poor placements even when the values are
   roughly right, while the policy gradient improves the policy directly.
+- **Tables do not carry over to 10×20.** With a hash table of the boards
+  met, the tabular methods clear 1.8–2.4 rows (Q methods) and 7.3 (TD on
+  afterstates) after 10⁷ pieces. Above greedy (0.14), below the heuristic
+  (10.8). More than half of the pieces played in training (0.61–0.69)
+  lead to a board never seen before, and the boards of the test games
+  that are in the table (45–55%) are mostly the first, nearly empty ones.
+  A table learns a board only from visits to that same board; features
+  carry what is learned to similar boards.
 - **10×20.** Linear TD clears 88 rows (seeds from 85 to 93), REINFORCE
   36 (32 to 39), greedy 0.14 and random 0.01. TD learns from every
   piece; REINFORCE waits for the end of each game, and its returns get

@@ -13,7 +13,8 @@ every exported policy is evaluated again from what is written and must
 give the value stored in its final.json.
 
 Run: .venv\\Scripts\\python experiments\\export_viewer.py
-     (after exp_dp.py, exp_tabular.py and exp_linear.py)
+     (after exp_dp.py, exp_tabular.py, exp_linear.py, exp_heuristic.py and
+     exp_tabular_10x20.py)
 """
 import base64
 import json
@@ -177,6 +178,44 @@ def main():
     base_path = RESULTS / 'linear' / 'baselines.json'
     if base_path.exists():
         res['baselines_10x20'] = load_json(base_path)
+    if (RESULTS / 'linear' / 'plateau.json').exists():
+        res['plateau_10x20'] = load_json(RESULTS / 'linear' / 'plateau.json')
+
+    # ---------------------------------------------------------- heuristic
+    hp = RESULTS / 'heuristic' / 'summary.json'
+    if hp.exists():
+        heur = load_json(hp)
+        heur['10x20']['value'] = heur['10x20']['mean']
+        for H in HEIGHTS:
+            t = dp.solve(6, H)
+            pol = linear.linear_policy_on_table(t, linear.table_features(t, 6, H),
+                                                np.array(heur[f'6x{H}']['weights']))
+            check(f'heuristic 6x{H}', dp.evaluate_policy(t['nxt'], t['rew'], pol)[0],
+                  heur[f'6x{H}']['value'])
+        res['heuristic'] = {b: v for b, v in heur.items() if b != '6x3'}
+
+    # ------------------------------------------------- tabular on 10x20
+    t20 = {}
+    for m in tabular.METHODS:
+        dirs = sorted((RESULTS / 'tabular_10x20').glob(f'{m}_s*'))
+        dirs = [d for d in dirs if (d / 'final.json').exists()]
+        if not dirs:
+            continue
+        fins = [load_json(d / 'final.json') for d in dirs]
+        curves = [load_csv(d / 'train.csv') for d in dirs]
+        vals = [f['value'] for f in fins]
+        t20[m] = dict(value=float(np.mean(vals)), lo=min(vals), hi=max(vals),
+                      ci95=float(np.mean([f['ci95'] for f in fins])),
+                      boards=float(np.mean([f['boards'] for f in fins])),
+                      coverage=float(np.mean([f['coverage'] for f in fins])),
+                      pieces=float(np.mean([f['pieces'] for f in fins])),
+                      steps=fins[0]['steps'], seeds=len(fins), alpha=fins[0]['alpha'],
+                      eps=fins[0]['eps'], seconds=float(np.mean([f['train_seconds'] for f in fins])),
+                      curve=dict(steps=[int(float(r['steps'])) for r in curves[0]],
+                                 value=band(curves, 'value'), coverage=band(curves, 'coverage'),
+                                 boards=band(curves, 'boards')))
+    if t20:
+        res['tabular_10x20'] = t20
     res['linear'] = lin
     res['shown'] = shown
     write_js('data_10x20.js', 'SZ_DATA', '10x20', data10)
