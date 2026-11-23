@@ -1,0 +1,20 @@
+{
+ "method": "td_afterstate",
+ "value": 7.277705254333766,
+ "ratio": 0.980007068760222,
+ "pieces": 15.556421856579322,
+ "agreement": 0.9573874918316077,
+ "episodes": 10000000,
+ "steps": 80345093,
+ "train_seconds": 26.46597209945321,
+ "H": 5,
+ "alpha": 0.1,
+ "eps": 0.2,
+ "q0": 0.0,
+ "seed": 1,
+ "save": [
+  "tabular",
+  "final",
+  "td_afterstate_H5_s1"
+ ]
+}

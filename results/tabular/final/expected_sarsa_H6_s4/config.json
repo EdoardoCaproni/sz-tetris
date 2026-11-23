@@ -1,0 +1,14 @@
+{
+ "method": "expected_sarsa",
+ "H": 6,
+ "alpha": 0.3,
+ "eps": 0.1,
+ "q0": 0.0,
+ "episodes": 10000000,
+ "seed": 4,
+ "save": [
+  "tabular",
+  "final",
+  "expected_sarsa_H6_s4"
+ ]
+}

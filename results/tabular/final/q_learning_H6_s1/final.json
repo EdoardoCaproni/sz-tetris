@@ -1,0 +1,20 @@
+{
+ "method": "q_learning",
+ "value": 10.161631659719761,
+ "ratio": 0.8931922224627927,
+ "pieces": 20.582334383567794,
+ "agreement": 0.9122600971312789,
+ "episodes": 10000000,
+ "steps": 91276144,
+ "train_seconds": 20.386869700159878,
+ "H": 6,
+ "alpha": 0.3,
+ "eps": 0.2,
+ "q0": 0.0,
+ "seed": 1,
+ "save": [
+  "tabular",
+  "final",
+  "q_learning_H6_s1"
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "method": "sarsa",
+ "H": 4,
+ "alpha": 0.1,
+ "eps": 0.1,
+ "q0": 0.0,
+ "episodes": 10000000,
+ "seed": 2,
+ "save": [
+  "tabular",
+  "final",
+  "sarsa_H4_s2"
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "method": "mc",
+ "H": 4,
+ "alpha": 0.0,
+ "eps": 0.1,
+ "q0": 0.0,
+ "episodes": 10000000,
+ "seed": 0,
+ "save": [
+  "tabular",
+  "final",
+  "mc_H4_s0"
+ ]
+}

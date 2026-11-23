@@ -1,0 +1,14 @@
+{
+ "method": "q_learning",
+ "H": 6,
+ "alpha": 0.3,
+ "eps": 0.2,
+ "q0": 0.0,
+ "episodes": 10000000,
+ "seed": 4,
+ "save": [
+  "tabular",
+  "final",
+  "q_learning_H6_s4"
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "method": "expected_sarsa",
+ "value": 9.782127125687467,
+ "ratio": 0.8598343416088079,
+ "pieces": 19.93306111879646,
+ "agreement": 0.8537819539102647,
+ "episodes": 10000000,
+ "steps": 125630403,
+ "train_seconds": 39.24902739957906,
+ "H": 6,
+ "alpha": 0.3,
+ "eps": 0.1,
+ "q0": 0.0,
+ "seed": 4,
+ "save": [
+  "tabular",
+  "final",
+  "expected_sarsa_H6_s4"
+ ]
+}

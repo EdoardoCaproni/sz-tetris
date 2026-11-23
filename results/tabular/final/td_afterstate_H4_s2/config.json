@@ -1,0 +1,14 @@
+{
+ "method": "td_afterstate",
+ "H": 4,
+ "alpha": 0.1,
+ "eps": 0.2,
+ "q0": 0.0,
+ "episodes": 10000000,
+ "seed": 2,
+ "save": [
+  "tabular",
+  "final",
+  "td_afterstate_H4_s2"
+ ]
+}
