@@ -214,6 +214,12 @@ def train(method, W, H, steps, alpha, eps=0.0, alpha_w=None, seed_=0,
         row = dict(steps=done, episodes=episodes)
         row.update(evaluate(method, W, H, w, theta, table, Phi, eval_games,
                             seed=10_000 + k))
+        # the test games reseed the random generator (the same test pieces
+        # for every run): training goes on from a seed of its own, so that
+        # different seeds stay independent runs (exact evaluation on a
+        # table uses no random numbers)
+        if table is None:
+            tabular.seed(1_000_003 * (seed_ + 1) + k)
         if not np.isfinite(w).all() or not np.isfinite(theta).all():
             row['diverged'] = True
             curve.append(row)
