@@ -18,3 +18,7 @@ results/dp_cache/
 
 # editor
 .vscode/
+
+# run logs
+results/*_log.txt
+viewer/_debug.html
