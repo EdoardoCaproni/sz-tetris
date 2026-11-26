@@ -115,8 +115,8 @@ optimum in brackets).
 | Q-learning | 4.01 (93%) | 6.59 (89%) | 10.04 (88%) | 2.40 |
 | Expected Sarsa | 4.02 (93%) | 6.47 (87%) | 9.32 (82%) | 2.43 |
 | TD(0) on afterstates | 4.18 (97%) | 7.26 (98%) | 10.88 (96%) | 7.32 |
-| Linear TD(0) on afterstates | – | 4.97 (67%) | 6.17 (54%) | 87.9 ± 1.5 |
-| REINFORCE with baseline | – | 6.63 (89%) | 9.43 (83%) | 36.3 ± 1.0 |
+| Linear TD(0) on afterstates | – | 4.97 (67%) | 6.17 (54%) | 89.7 ± 1.6 |
+| REINFORCE with baseline | – | 6.63 (89%) | 9.43 (83%) | 42.5 ± 1.1 |
 
 On 10×20, ± is the 95% confidence interval of the estimate for one seed
 (2,000 games). Greedy and random on 10×20 come from 100,000 games each.
@@ -152,14 +152,29 @@ What the numbers say:
   that are in the table (45–55%) are mostly the first, nearly empty ones.
   A table learns a board only from visits to that same board; features
   carry what is learned to similar boards.
-- **10×20.** Linear TD clears 88 rows (seeds from 85 to 93), REINFORCE
-  36 (32 to 39), greedy 0.14 and random 0.01. TD learns from every
-  piece; REINFORCE waits for the end of each game, and its returns get
-  noisier as games get longer.
+- **10×20.** After 2.5·10⁸ pieces, linear TD clears 90 rows (seeds from
+  87 to 92) and REINFORCE 42 (39 to 44); greedy 0.14, random 0.01. The
+  two curves differ in shape. TD reaches about 90–100 rows within the
+  first 10⁷ pieces and then moves between 70 and 105 with no trend: with
+  a constant step size the weights never settle, and the greedy policy
+  changes with them. REINFORCE climbs slowly and steadily and levels off
+  near 42. TD learns from every piece; REINFORCE waits for the end of
+  each game, and its returns get noisier as games get longer.
 - **Step sizes.** Every setting is the best of a small grid, chosen by
   mean over seeds. For REINFORCE on 6×5 and 6×6 the largest step tried
   (0.1) is still the best, but the gain from 0.03 to 0.1 is only 0.7% and
-  1.4% of the optimum.
+  1.4% of the optimum. With step 0.01 on 10×20, 2 of 5 REINFORCE seeds
+  collapsed after about 10⁸ pieces to a policy that clears no rows.
+- **When to stop (10×20).** The budget is fixed in advance and then
+  checked: for each seed, the mean of the last three checkpoints
+  (1.2–2.5·10⁸ pieces) minus the mean of the three before (4.4–8.8·10⁷);
+  a setting is still improving if the 95% interval of that difference
+  over the seeds is above 0. REINFORCE at step 0.1 has levelled off
+  (+0.6 ± 0.7 rows); smaller steps are still climbing from below and might
+  end higher with a longer budget. Linear TD at step 0.001 comes out
+  "still improving" (+4.7 ± 2.5), but its curve was already at 90–100
+  rows after 10⁷ pieces: this is the drift described above, not
+  learning. A first budget of 5·10⁷ pieces gave 88 and 36 rows.
 
 ## Repository
 
@@ -182,7 +197,7 @@ py -3.11 -m venv .venv
 .venv\Scripts\python -m pytest tests
 .venv\Scripts\python experiments\exp_dp.py          # exact solution, about 1 min
 .venv\Scripts\python experiments\exp_tabular.py     # grid + final runs, about 25 min
-.venv\Scripts\python experiments\exp_linear.py      # linear methods, about 1.5 h
+.venv\Scripts\python experiments\exp_linear.py      # linear methods, about 3 h (10×20: 2 h on 20 processes)
 .venv\Scripts\python experiments\export_viewer.py   # data of the page
 ```
 

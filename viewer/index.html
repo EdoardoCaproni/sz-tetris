@@ -923,11 +923,15 @@ let tabBoard = '6x5', linBoard = '10x20';
 function plateauText() {
   const P = R.plateau_10x20, L = R.linear && R.linear['10x20'];
   if (!P || !L) return '';
-  return LIN.filter((m) => L[m]).map((m) => {
+  const lines = LIN.filter((m) => L[m]).map((m) => {
     const r = P.find((x) => x.method === m && x.alpha === L[m].alpha);
     if (!r) return '';
-    return `${LABEL(m)} ${fmt(r.mean_half, 1)} rows at half the budget, ${fmt(r.mean_end, 1)} at the end (${r.converged ? 'plateau' : 'still improving'}).`;
-  }).join(' ');
+    return `${LABEL(m)}: ${fmt(r.mean_prev, 1)} rows on average over the three checkpoints before, ${fmt(r.mean_last, 1)} over the last three (change ${r.diff >= 0 ? '+' : '−'}${fmt(Math.abs(r.diff), 1)} ± ${fmt(r.ci95, 1)} over the seeds: ${r.improving ? 'still improving' : 'levelled off'}).`;
+  });
+  lines.push('Linear TD gets near its final level within the first ten million pieces and then moves up and down around it: with a constant step size the weights never settle, and the greedy policy changes with them.');
+  const col = P.filter((x) => x.collapsed > 0);
+  col.forEach((x) => lines.push(`With step ${x.alpha}, ${x.collapsed} of ${x.seeds} ${LABEL(x.method)} seeds collapsed to a policy that clears no rows.`));
+  return lines.join(' ');
 }
 function renderResults() {
   if (!R.dp) return;
@@ -985,7 +989,7 @@ function renderResults() {
     });
     $('lin-note').textContent = SMALL.includes(linBoard)
       ? 'Exact value of the learned policy. The gap to the optimum is the price of describing a board with 14 numbers instead of looking it up in a table. Step sizes: best of {0.001, 0.003, 0.01} for TD and of {0.001, …, 0.1} for REINFORCE (mean of 5 seeds); on the small boards REINFORCE still gains a little at the largest step.'
-      : 'Monte Carlo estimate at each checkpoint (' + (R.plateau_10x20 ? '1,000' : '200') + ' games); the final values in the summary use 2,000 games per seed. Step size: the best of the same grids as on the small boards.' + (R.plateau_10x20 ? ' Budget fixed in advance, then checked: ' + plateauText() : '') + ' Random play clears ' + fmt(R.baselines_10x20 ? R.baselines_10x20.random.mean : null, 3) + ' rows.';
+      : 'Monte Carlo estimate at each checkpoint (' + (R.plateau_10x20 ? '1,000' : '200') + ' games); the final values in the summary use 2,000 games per seed. Step size: the best of the same grids as on the small boards.' + (R.plateau_10x20 ? ' Budget fixed in advance (2.5·10⁸ pieces), then checked by comparing, seed by seed, the last three checkpoints with the three before. ' + plateauText() : '') + ' Random play clears ' + fmt(R.baselines_10x20 ? R.baselines_10x20.random.mean : null, 3) + ' rows.';
   }
   // tabular on 10x20
   const T20 = R.tabular_10x20;
