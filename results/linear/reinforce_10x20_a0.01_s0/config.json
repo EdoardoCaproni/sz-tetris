@@ -5,9 +5,9 @@
  "alpha": 0.01,
  "alpha_w": 0.01,
  "eps": 0.0,
- "steps": 50000000,
+ "steps": 250000000,
  "seed": 0,
- "eval_games": 200,
+ "eval_games": 1000,
  "final_games": 2000,
  "save": [
   "linear",

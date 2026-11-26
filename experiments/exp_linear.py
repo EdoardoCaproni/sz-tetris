@@ -15,10 +15,17 @@ Checkpoints: exact on the small boards; on 10x20 Monte Carlo with
 `ck_games` games (95% CI about +-2 rows at 90 rows). The final policy of
 every 10x20 run is re-evaluated with `final_games` games.
 
-Stopping rule (plateau check, printed and saved in plateau.json): a
-setting has converged if the mean over seeds at the last checkpoint is
-within the 95% CI of the mean at the checkpoint closest to half the
-budget (or below it). Otherwise it is reported as still improving.
+Stopping rule (plateau check, printed and saved in plateau.json): for
+each seed, d = mean of the last 3 checkpoints - mean of the 3 before
+(about 1.2e8-2.5e8 against 4.4e7-8.8e7 pieces on 10x20). A setting is
+still improving if the 95% interval of the mean of d over the seeds
+(t distribution, n - 1 degrees of freedom) lies above 0; otherwise it
+has levelled off. Averaging checkpoints and pairing by seed matter: with
+a constant step size the greedy policy of linear TD moves between
+checkpoints by much more than the Monte Carlo error of one checkpoint,
+so comparing two single checkpoints (the first version of this check)
+calls noise "still improving". A seed whose last checkpoint is below
+1 row is reported as collapsed.
 
 Output: results/linear/<method>_<W>x<H>_a<alpha>_s<seed>/{config.json,train.csv,final.json,learned.npz}
         results/linear/summary.csv, results/linear/baselines.json
@@ -106,7 +113,16 @@ def main():
         plateau()
 
 
-def plateau(board='10x20'):
+# 97.5% quantile of Student's t with df degrees of freedom (no scipy)
+T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+        8: 2.306, 9: 2.262, 10: 2.228}
+
+
+def t975(df):
+    return T975.get(df, 1.96)
+
+
+def plateau(board='10x20', k=3):
     """The stopping rule of the docstring, for every (method, alpha) on board."""
     import glob
     out = []
@@ -119,16 +135,20 @@ def plateau(board='10x20'):
             n = min(len(c) for c in curves)
             steps = np.array([float(r['steps']) for r in curves[0][:n]])
             v = np.array([[float(r['value']) for r in c[:n]] for c in curves])
-            ci = np.array([[float(r.get('ci95') or 0) for r in c[:n]] for c in curves])
-            half = int(np.argmin(abs(steps - steps[-1] / 2)))
-            mean_half, mean_end = v[:, half].mean(), v[:, -1].mean()
-            ci_half = np.sqrt((ci[:, half] ** 2).sum()) / len(curves)   # CI of a mean of seeds
-            row = dict(method=m, alpha=a, seeds=len(curves), steps_half=steps[half],
-                       steps_end=steps[-1], mean_half=mean_half, mean_end=mean_end,
-                       ci95_half=ci_half, converged=bool(mean_end <= mean_half + ci_half))
+            last, prev = v[:, -k:].mean(1), v[:, -2 * k:-k].mean(1)
+            d = last - prev
+            ci = t975(len(d) - 1) * d.std(ddof=1) / np.sqrt(len(d))
+            row = dict(method=m, alpha=a, seeds=len(curves),
+                       steps_prev=[steps[-2 * k], steps[-k - 1]], steps_last=[steps[-k], steps[-1]],
+                       mean_prev=float(prev.mean()), mean_last=float(last.mean()),
+                       diff=float(d.mean()), ci95=float(ci),
+                       improving=bool(d.mean() - ci > 0),
+                       collapsed=int((v[:, -1] < 1).sum()))
             out.append(row)
-            print(f"{m:10s} a={a:<6} {mean_half:7.2f} -> {mean_end:7.2f} (+-{ci_half:.2f})  "
-                  f"{'plateau' if row['converged'] else 'still improving'}")
+            print(f"{m:10s} a={a:<6} {row['mean_prev']:6.1f} -> {row['mean_last']:6.1f}  "
+                  f"d = {row['diff']:+5.1f} +- {ci:4.1f}  "
+                  f"{'still improving' if row['improving'] else 'levelled off'}"
+                  + (f"  ({row['collapsed']} seeds collapsed)" if row['collapsed'] else ''))
     save_json(out_dir('linear') / 'plateau.json', out)
     return out
 
